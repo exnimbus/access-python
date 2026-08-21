@@ -3,17 +3,61 @@
 
 from __future__ import annotations
 
-import os
-from enum import Enum
+from collections.abc import Sequence
+from datetime import datetime, timedelta
+from enum import Enum, IntFlag
+from typing import NamedTuple, Protocol
+
 from uplink.common import base58
-from datetime import datetime
 from google.protobuf.timestamp_pb2 import Timestamp
-from .macaroon import Macaroon, new_unrestricted
+from .macaroon import Macaroon, new_unrestricted, new_unrestricted_from_parts
 from .caveat import Caveat
 
 
-class UnauthorizedError(Exception):
+class APIKeyError(ValueError):
     pass
+
+
+class FormatError(APIKeyError):
+    pass
+
+
+class InvalidError(APIKeyError):
+    pass
+
+
+class UnauthorizedError(APIKeyError):
+    pass
+
+
+class RevokedError(APIKeyError):
+    pass
+
+
+class APIKeyVersion(IntFlag):
+    MIN = 0
+    OBJECT_LOCK = 1
+    AUDITABLE = 2
+    EVENTING = 4
+
+    def supports_object_lock(self) -> bool:
+        return bool(self & APIKeyVersion.OBJECT_LOCK)
+
+    def supports_auditability(self) -> bool:
+        return bool(self & APIKeyVersion.AUDITABLE)
+
+    def supports_eventing(self) -> bool:
+        return bool(self & APIKeyVersion.EVENTING)
+
+
+class Revoker(Protocol):
+    def check(self, tails: Sequence[bytes]) -> bool:
+        ...
+
+
+class AllowedBuckets(NamedTuple):
+    all: bool
+    buckets: frozenset[bytes]
 
 
 class ActionType(Enum):
@@ -56,15 +100,39 @@ class APIKey:
 
     @staticmethod
     def parse(key: str) -> APIKey:
-        data, version = base58.check_decode(key)
+        try:
+            data, version = base58.check_decode(key)
+        except Exception as exc:
+            raise FormatError("invalid api key format") from exc
         if version != 0:
-            raise ValueError("invalid api key format")
+            raise FormatError("invalid api key format")
         return APIKey.parse_raw(data)
 
     @staticmethod
     def parse_raw(data: bytes) -> APIKey:
-        mac = Macaroon.parse(data)
+        try:
+            mac = Macaroon.parse(data)
+        except Exception as exc:
+            raise FormatError("invalid api key format") from exc
         return APIKey(mac=mac)
+
+    @staticmethod
+    def from_parts(head: bytes, secret: bytes, *caveats: Caveat) -> APIKey:
+        api_key = APIKey(new_unrestricted_from_parts(head, secret))
+        for caveat in caveats:
+            api_key = api_key.restrict(caveat)
+        return api_key
+
+    @property
+    def head(self) -> bytes:
+        return self.mac.head
+
+    @property
+    def tail(self) -> bytes:
+        return self.mac.tail
+
+    def serialize(self) -> str:
+        return base58.check_encode(self.serialize_raw(), 0)
 
     def serialize_raw(self) -> bytes:
         return self.mac.serialize()
@@ -74,22 +142,88 @@ class APIKey:
         mac = self.mac.add_first_party_caveat(caveat_bytes)
         return APIKey(mac)
 
-    # TODO: implement revoker
-    def check(self, secret: bytes, action: Action) -> None:
+    def check(
+        self,
+        secret: bytes,
+        action: Action,
+        *,
+        version: APIKeyVersion = APIKeyVersion.MIN,
+        revoker: Revoker | None = None,
+    ) -> None:
+        """Authorize ``action`` using ``secret``; version and revoker are keyword-only."""
         ok, tails = self.mac.validate_and_tails(secret)
         if not ok:
-            raise ValueError("macaroon unauthorized")
+            raise InvalidError("macaroon unauthorized")
 
         if action.time is None:
-            raise ValueError("no timestamp provided")
+            raise APIKeyError("no timestamp provided")
 
-        for caveat in self.mac.caveats:
-            cav = Caveat()
-            cav.ParseFromString(caveat)
+        if (
+            action.op
+            in {
+                ActionType.ACTION_LOCK,
+                ActionType.ACTION_PUT_OBJECT_RETENTION,
+                ActionType.ACTION_GET_OBJECT_RETENTION,
+                ActionType.ACTION_PUT_OBJECT_LEGAL_HOLD,
+                ActionType.ACTION_GET_OBJECT_LEGAL_HOLD,
+                ActionType.ACTION_BYPASS_GOVERNANCE_RETENTION,
+                ActionType.ACTION_PUT_BUCKET_OBJECT_LOCK_CONFIGURATION,
+                ActionType.ACTION_GET_BUCKET_OBJECT_LOCK_CONFIGURATION,
+            }
+            and not version.supports_object_lock()
+        ) or (
+            action.op
+            in {
+                ActionType.ACTION_PUT_BUCKET_NOTIFICATION_CONFIGURATION,
+                ActionType.ACTION_GET_BUCKET_NOTIFICATION_CONFIGURATION,
+            }
+            and not version.supports_eventing()
+        ):
+            raise UnauthorizedError("action disallowed")
+
+        for cav in self._caveats():
             if not caveat_allows(cav, action):
                 raise UnauthorizedError("action disallowed")
 
-        # TODO: implement revoker?
+        if revoker is not None:
+            try:
+                revoked = revoker.check(tails)
+            except Exception as exc:
+                raise RevokedError("revocation check failed") from exc
+            if revoked:
+                raise RevokedError("contains revoked tail")
+
+    def get_allowed_buckets(self, action: Action) -> AllowedBuckets:
+        buckets: frozenset[bytes] | None = None
+        for cav in self._caveats():
+            if not caveat_allows(cav, action):
+                raise UnauthorizedError("action disallowed")
+            if cav.allowed_paths:
+                caveat_buckets = frozenset(path.bucket for path in cav.allowed_paths)
+                buckets = (
+                    caveat_buckets if buckets is None else buckets & caveat_buckets
+                )
+        return AllowedBuckets(buckets is None, buckets or frozenset())
+
+    def get_max_object_ttl(self) -> timedelta | None:
+        ttl: timedelta | None = None
+        for cav in self._caveats():
+            if cav.HasField("max_object_ttl"):
+                candidate = cav.max_object_ttl.ToTimedelta()
+                if ttl is None or candidate < ttl:
+                    ttl = candidate
+        return ttl
+
+    def _caveats(self) -> list[Caveat]:
+        caveats: list[Caveat] = []
+        for data in self.mac.caveats:
+            caveat = Caveat()
+            try:
+                caveat.ParseFromString(data)
+            except Exception as exc:
+                raise FormatError("invalid caveat format") from exc
+            caveats.append(caveat)
+        return caveats
 
 
 def new_api_key(secret: bytes) -> APIKey:
