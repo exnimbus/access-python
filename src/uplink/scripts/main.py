@@ -3,6 +3,7 @@
 
 import click
 import uplink
+from typing import Any
 from uplink import edge
 from .access_permission import AccessPermission, access_permission_options
 
@@ -37,7 +38,7 @@ Example: register access with default auth service
 
 @click.group()
 @click.version_option()
-def main():
+def main() -> None:
     pass
 
 
@@ -46,7 +47,8 @@ def main():
 )
 @click.option("--access", required=True, help="Access value to restrict")
 @access_permission_options
-def restrict(access, **kwargs):
+def restrict(access: str, **kwargs: Any) -> None:
+    # Click supplies dynamically typed option values at this callback boundary.
     # TODO: load from file? e.g. go uplink takes a name or value and looks it up in access.json
     access_in = uplink.parse_access(access)
 
@@ -82,14 +84,21 @@ def restrict(access, **kwargs):
 @click.option(
     "--access", required=True, help="Access value to register with the auth service"
 )
-def register(auth_service, ca_cert, public, format, aws_profile, access):
+def register(
+    auth_service: str,
+    ca_cert: str | None,
+    public: bool,
+    format: str,
+    aws_profile: str,
+    access: str,
+) -> None:
     access_in = uplink.parse_access(access)
     credentials = _register_access(access_in, auth_service, public, ca_cert)
     _display_gateway_credentials(credentials, format, aws_profile)
 
 
 def _register_access(
-    access: uplink.Access, auth_service: str, public: bool, ca_cert: str
+    access: uplink.Access, auth_service: str, public: bool, ca_cert: str | None
 ) -> edge.Credentials:
     if auth_service == "":
         raise ValueError("no auth service address provided")
@@ -110,7 +119,7 @@ def _register_access(
 
 def _display_gateway_credentials(
     credentials: edge.Credentials, format: str, aws_profile: str
-):
+) -> None:
     if format == "env":
         print(f"AWS_ACCESS_KEY_ID={credentials.access_key_id}")
         print(f"AWS_SECRET_ACCESS_KEY={credentials.secret_key}")

@@ -7,7 +7,6 @@ from enum import IntEnum
 from urllib.parse import urlparse, parse_qs, ParseResult
 from uplink.common import base58
 from io import StringIO
-from typing import Optional
 
 KEY_SIZE = 32
 NONCE_SIZE = 24
@@ -20,25 +19,25 @@ class Key:
 
     SIZE = KEY_SIZE
 
-    def __init__(self, data: bytes):
+    def __init__(self, data: bytes) -> None:
         if len(data) != KEY_SIZE:
             raise ValueError(f"key must be of length f{KEY_SIZE} but got f{len(data)}")
         self._data = data
 
-    def __bytes__(self):
+    def __bytes__(self) -> bytes:
         return self._data
 
-    def __eq__(self, other):
+    def __eq__(self, other: object) -> bool:
         if not isinstance(other, Key):
             return NotImplemented
         return self._data == other._data
 
     @staticmethod
-    def newzero():
+    def newzero() -> Key:
         return Key(b"\x00" * KEY_SIZE)
 
     @staticmethod
-    def generate():
+    def generate() -> Key:
         return Key(os.urandom(KEY_SIZE))
 
 
@@ -57,35 +56,35 @@ class CipherSuite(IntEnum):
 class NoiseInfo:
     __slots__ = ["_public_key", "_proto"]
 
-    def __init__(self, public_key=None, proto=0):
+    def __init__(self, public_key: str | None = None, proto: int = 0) -> None:
         self._public_key = public_key
         self._proto = proto
 
     @property
-    def public_key(self):
+    def public_key(self) -> str | None:
         return self._public_key
 
     @property
-    def proto(self):
+    def proto(self) -> int:
         return self._proto
 
     @property
-    def zero(self):
+    def zero(self) -> bool:
         return self._proto == 0 and self._public_key is None
 
 
 class NodeURL:
     __slots__ = ["_id", "_address", "_noise_info", "_debounce_limit", "_features"]
 
-    def __init__(self):
-        self._id = None
+    def __init__(self) -> None:
+        self._id: NodeID | None = None
         self._address = ""
         self._noise_info = NoiseInfo()
         self._debounce_limit = 0
         self._features = 0
 
     @staticmethod
-    def parse(value):
+    def parse(value: str) -> NodeURL:
         if value == "":
             return NodeURL()
         if not value.startswith("storj://"):
@@ -121,27 +120,27 @@ class NodeURL:
         return node
 
     @property
-    def id(self):
+    def id(self) -> NodeID | None:
         return self._id
 
     @id.setter
-    def id(self, value):
+    def id(self, value: NodeID | None) -> None:
         self._id = value
 
     @property
-    def address(self):
+    def address(self) -> str:
         return self._address
 
     @property
-    def noise_info(self):
+    def noise_info(self) -> NoiseInfo:
         return self._noise_info
 
     @property
-    def debounce_limit(self):
+    def debounce_limit(self) -> int:
         return self._debounce_limit
 
     @property
-    def features(self):
+    def features(self) -> int:
         return self._features
 
     def __str__(self) -> str:
@@ -153,7 +152,7 @@ class NodeURL:
 
         delim = "?"
 
-        def write_key(key, value):
+        def write_key(key: str, value: str) -> None:
             nonlocal delim
             out.write(delim)
             delim = "&"
@@ -170,7 +169,10 @@ class NodeURL:
             write_key("noise_proto=", f"{self.noise_info.proto:d}")
 
         if self.noise_info.public_key is not None:
-            write_key("noise_pub=", base58.check_encode(self.noise_info.public_key, 0))
+            write_key(
+                "noise_pub=",
+                base58.check_encode(self.noise_info.public_key.encode(), 0),
+            )
 
         return out.getvalue()
 
@@ -178,14 +180,14 @@ class NodeURL:
 class NodeID:
     __slots__ = ["_id"]
 
-    def __init__(self, id_bytes: bytes):
+    def __init__(self, id_bytes: bytes | bytearray) -> None:
         if len(id_bytes) != NODEID_SIZE:
             raise ValueError(
                 f"not enough bytes to make a node id; have {len(id_bytes)}, need {NODEID_SIZE}"
             )
         self._id = bytes(id_bytes)
 
-    def __str__(self):
+    def __str__(self) -> str:
         unversioned = self.unversioned()
         # TODO: support versions
         return base58.check_encode(unversioned._id, 0)
@@ -203,11 +205,11 @@ def node_id_from_string(s: str) -> NodeID:
     return unversioned_id
 
 
-def node_id_from_bytes(v: bytes):
+def node_id_from_bytes(v: bytes) -> NodeID:
     return NodeID(v)
 
 
-def _hostport(u: ParseResult) -> Optional[str]:
+def _hostport(u: ParseResult) -> str | None:
     if u.port is None:
         return u.hostname
     return f"{u.hostname}:{u.port}"

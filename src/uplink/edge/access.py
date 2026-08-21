@@ -13,7 +13,7 @@ class Credentials:
 
     def __init__(
         self, access_key_id: str = "", secret_key: str = "", endpoint: str = ""
-    ):
+    ) -> None:
         self.access_key_id = access_key_id
         self.secret_key = secret_key
         self.endpoint = endpoint
@@ -22,7 +22,7 @@ class Credentials:
 class RegisterAccessOptions:
     __slots__ = ["public"]
 
-    def __init__(self, public: bool = False):
+    def __init__(self, public: bool = False) -> None:
         self.public = public
 
 
@@ -36,11 +36,13 @@ class Config:
         self,
         auth_service_url: str,
         certificate_pem: Optional[bytes] = None,
-    ):
+    ) -> None:
         self.auth_service_url = auth_service_url
         self.certificate_pem = certificate_pem
 
-    def register_access(self, access: Access, options: Optional[RegisterAccessOptions]):
+    def register_access(
+        self, access: Access, options: Optional[RegisterAccessOptions]
+    ) -> Credentials:
         if self.auth_service_url == "":
             raise ValueError("auth_service_url is missing")
 
@@ -65,8 +67,10 @@ class Config:
         )
 
         resp = urllib.request.urlopen(req, context=context)
-        raw = resp.read()
-        body = json.loads(raw)
+        # urllib's response body is untyped at this dependency boundary.
+        raw: bytes = resp.read()
+        # The service's JSON response is an untyped dependency boundary.
+        body: dict[str, str] = json.loads(raw)
         return Credentials(
             access_key_id=body["access_key_id"],
             secret_key=body["secret_key"],

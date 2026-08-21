@@ -12,7 +12,6 @@ from typing import Optional
 import hmac
 import hashlib
 
-
 AESGCM_NONCE_SIZE = 12
 _EMPTY_COMPONENT_PREFIX = 1
 _EMPTY_COMPONENT = _EMPTY_COMPONENT_PREFIX.to_bytes()
@@ -24,13 +23,15 @@ _ESCAPE_FF = int("fe", 16)
 _ESCAPE_01 = int("01", 16)
 
 
-def encrypt_path_with_store_cipher(bucket: bytes, path: Unencrypted, store: Store):
+def encrypt_path_with_store_cipher(
+    bucket: bytes, path: Unencrypted, store: Store
+) -> Encrypted:
     return encrypt_path(bucket, path, None, store)
 
 
 def encrypt_path(
     bucket: bytes, path: Unencrypted, path_cipher: Optional[CipherSuite], store: Store
-):
+) -> Encrypted:
     if not path.valid:
         return Encrypted()
 
@@ -56,7 +57,7 @@ def encrypt_path(
     return pb.encrypted
 
 
-def _encrypt_iterator(iter: Iterator, cipher: CipherSuite, key: Key):
+def _encrypt_iterator(iter: Iterator, cipher: CipherSuite, key: Key) -> bytes:
     iter = iter.copy()
     pb = PathBuilder()
     while not iter.done:
@@ -93,7 +94,7 @@ def _encrypt_path_component(comp: bytes, cipher: CipherSuite, key: Key) -> bytes
     return _encode_segment(segment)
 
 
-def _encode_segment(segment: bytes) -> bytes:
+def _encode_segment(segment: bytes | bytearray) -> bytes:
     if len(segment) == 0:
         return _EMPTY_COMPONENT
 
@@ -140,7 +141,7 @@ def _decode_segment(segment: bytes) -> bytes:
     return bytes(decoded)
 
 
-def _validate_encoded_segment(segment: bytes):
+def _validate_encoded_segment(segment: bytes) -> None:
     if len(segment) == 0:
         raise ValueError("encoded segment cannot be empty")
     elif (
@@ -225,7 +226,7 @@ def _decrypt_iterator(iter: Iterator, cipher: CipherSuite, key: Key) -> bytes:
     return pb.value()
 
 
-def derive_path_key(bucket: bytes, path: Unencrypted, store: Store):
+def derive_path_key(bucket: bytes, path: Unencrypted, store: Store) -> Key:
     _, remaining, base = store.lookup_unencrypted(bucket, path)
     if base is None:
         raise ValueError(f'"{bucket!r}/{path!r}": missing encryption base')
@@ -254,7 +255,7 @@ def derive_path_key(bucket: bytes, path: Unencrypted, store: Store):
 def _derive_path_key_component(key: Key, component: bytes) -> Key:
     path_component = bytearray(b"path:")
     path_component.extend(component)
-    return derive_key(key, path_component)
+    return derive_key(key, bytes(path_component))
 
 
 def _decrypt_path_component(comp: bytes, cipher: CipherSuite, key: Key) -> bytes:
@@ -286,23 +287,23 @@ def _decrypt_path_component(comp: bytes, cipher: CipherSuite, key: Key) -> bytes
 class PathBuilder:
     __slots__ = ["_i", "_buf"]
 
-    def __init__(self):
+    def __init__(self) -> None:
         self._i = 0
         self._buf = bytearray()
 
     def value(self) -> bytes:
         return bytes(self._buf)
 
-    def append(self, s: bytes):
+    def append(self, s: bytes) -> None:
         if self._i > 0:
             self._buf.extend(b"/")
         self._buf.extend(s)
         self._i += 1
 
     @property
-    def encrypted(self):
+    def encrypted(self) -> Encrypted:
         return Encrypted(self.value())
 
     @property
-    def unencrypted(self):
+    def unencrypted(self) -> Unencrypted:
         return Unencrypted(self.value())

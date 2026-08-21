@@ -9,7 +9,7 @@ Caveat = types_pb2.Caveat
 CaveatPath = Caveat.Path
 
 
-def caveat_with_nonce(caveat: Caveat):
+def caveat_with_nonce(caveat: Caveat) -> Caveat:
     out = Caveat()
     out.CopyFrom(caveat)
     out.nonce = os.urandom(4)

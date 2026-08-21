@@ -1,57 +1,59 @@
 # Copyright (C) 2023 Storj Labs, Inc.
 # See LICENSE for copying information.
 
+from __future__ import annotations
+
+from collections.abc import Sequence
 from uplink.common.macaroon import Macaroon, APIKey, Caveat, CaveatPath
 from uplink.common.pb import encryption_pb2, encryption_access_pb2
 from uplink.common import encryption
-from uplink.common.encryption import Store, CipherSuite
+from uplink.common.encryption import Store
 from uplink.common.paths import Encrypted, Unencrypted
 from uplink.common import storj
 from uplink.common.storj import Key
-from typing import List, Tuple, Optional
 
 
 class EncryptionAccess:
     __slots__ = ["_store"]
 
-    def __init__(self, default_key: Optional[Key] = None):
+    def __init__(self, default_key: Key | None = None) -> None:
         store = Store()
         store.default_key = default_key
 
         self._store = store
 
-    def clone(self):
+    def clone(self) -> EncryptionAccess:
         clone = EncryptionAccess()
         clone._store = Store.clone(self._store)
         return clone
 
     @property
-    def store(self):
+    def store(self) -> Store:
         return self._store
 
     @property
-    def default_key(self) -> Optional[Key]:
+    def default_key(self) -> Key | None:
         return self._store.default_key
 
     @default_key.setter
-    def default_key(self, default_key: Optional[Key]):
+    def default_key(self, default_key: Key | None) -> None:
         self._store.default_key = default_key
 
     @property
-    def default_path_cipher(self):
+    def default_path_cipher(self) -> storj.CipherSuite:
         return self._store.default_path_cipher
 
     @default_path_cipher.setter
-    def default_path_cipher(self, default_path_cipher):
+    def default_path_cipher(self, default_path_cipher: storj.CipherSuite) -> None:
         self._store.default_path_cipher = default_path_cipher
 
-    def limit_to(self, api_key: APIKey):
+    def limit_to(self, api_key: APIKey) -> None:
         try:
             self._store = self.__maybe_limit_to(api_key)
         except Exception:
             self._store = Store()
 
-    def __maybe_limit_to(self, api_key: APIKey):
+    def __maybe_limit_to(self, api_key: APIKey) -> Store:
         # TODO: storj/common does a clone of the macaroon here but "bytes" are
         # immutable in python so it's probably ok to just return parts of the
         # api key macaroon without duplicating...
@@ -84,7 +86,7 @@ class EncryptionAccess:
 
         return store
 
-    def to_proto(self):
+    def to_proto(self) -> encryption_access_pb2.EncryptionAccess:
         enc_access = encryption_access_pb2.EncryptionAccess()
 
         def append(
@@ -93,7 +95,7 @@ class EncryptionAccess:
             enc: Encrypted,
             key: Key,
             path_cipher: storj.CipherSuite,
-        ):
+        ) -> None:
             store_entry = encryption_access_pb2.EncryptionAccess.StoreEntry()
             store_entry.bucket = bucket
             store_entry.unencrypted_path = unenc.raw
@@ -112,8 +114,8 @@ class EncryptionAccess:
         return enc_access
 
 
-def collapse_prefixes(mac: Macaroon) -> Tuple[List[CaveatPath], bool]:
-    def is_allowed_by_group(cav, group):
+def collapse_prefixes(mac: Macaroon) -> tuple[list[CaveatPath], bool]:
+    def is_allowed_by_group(cav: CaveatPath, group: Sequence[CaveatPath]) -> bool:
         for other in group:
             if cav.bucket == other.bucket and cav.encrypted_path_prefix.startswith(
                 other.encrypted_path_prefix
@@ -121,14 +123,16 @@ def collapse_prefixes(mac: Macaroon) -> Tuple[List[CaveatPath], bool]:
                 return True
         return False
 
-    def is_allowed_by_groups(cav, groups):
+    def is_allowed_by_groups(
+        cav: CaveatPath, groups: list[Sequence[CaveatPath]]
+    ) -> bool:
         for group in groups:
             if not is_allowed_by_group(cav, group):
                 return False
         return True
 
-    groups = []
-    prefixes: List[CaveatPath] = []
+    groups: list[Sequence[CaveatPath]] = []
+    prefixes: list[CaveatPath] = []
     for cav_data in mac.caveats:
         cav = Caveat()
         cav.ParseFromString(cav_data)

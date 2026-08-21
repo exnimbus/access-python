@@ -3,11 +3,10 @@
 
 from __future__ import annotations
 import copy
-from typing import Tuple
 
 
 class Iterator:
-    def __init__(self, raw: bytes = bytes()):
+    def __init__(self, raw: bytes = bytes()) -> None:
         self._raw = raw
         self._consumed = 0
         self._last_empty = bool(raw)
@@ -42,13 +41,13 @@ class Iterator:
 
 
 class Unencrypted:
-    def __init__(self, raw=bytes()):
+    def __init__(self, raw: bytes = bytes()) -> None:
         self._raw = raw
 
     def __str__(self) -> str:
         return self.raw.decode()
 
-    def __eq__(self, other):
+    def __eq__(self, other: object) -> bool:
         if not isinstance(other, Unencrypted):
             return NotImplemented
         return self._raw == other._raw
@@ -61,7 +60,7 @@ class Unencrypted:
     def raw(self) -> bytes:
         return self._raw
 
-    def consume(self, prefix) -> Tuple[Unencrypted, bool]:
+    def consume(self, prefix: Unencrypted) -> tuple[Unencrypted, bool]:
         if len(self._raw) >= len(prefix._raw) and self._raw.startswith(prefix._raw):
             return Unencrypted(self._raw[len(prefix._raw) :]), True
         return Unencrypted(), False
@@ -69,18 +68,18 @@ class Unencrypted:
     def iterator(self) -> Iterator:
         return Iterator(self._raw)
 
-    def less(self, other) -> bool:
+    def less(self, other: Unencrypted) -> bool:
         return self._raw < other._raw
 
 
 class Encrypted:
-    def __init__(self, raw=bytes()):
+    def __init__(self, raw: bytes = bytes()) -> None:
         self._raw = raw
 
     def __str__(self) -> str:
         return self.raw.decode()
 
-    def __eq__(self, other):
+    def __eq__(self, other: object) -> bool:
         if not isinstance(other, Encrypted):
             return NotImplemented
         return self._raw == other._raw
@@ -93,7 +92,7 @@ class Encrypted:
     def raw(self) -> bytes:
         return self._raw
 
-    def consume(self, prefix) -> Tuple[Encrypted, bool]:
+    def consume(self, prefix: Encrypted) -> tuple[Encrypted, bool]:
         if len(self._raw) >= len(prefix._raw) and self._raw.startswith(prefix._raw):
             return Encrypted(self._raw[len(prefix._raw) :]), True
         return Encrypted(), False
@@ -101,5 +100,5 @@ class Encrypted:
     def iterator(self) -> Iterator:
         return Iterator(self._raw)
 
-    def less(self, other) -> bool:
+    def less(self, other: Encrypted) -> bool:
         return self._raw < other._raw

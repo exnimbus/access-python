@@ -1,14 +1,17 @@
 # Copyright (C) 2023 Storj Labs, Inc.
 # See LICENSE for copying information.
 
+from collections.abc import Callable
 import click
+from uplink import Access
 from uplink.common import grant
 from datetime import datetime, timedelta
 from .paramtypes import SharePrefix, HumanDateNotBefore, HumanDateNotAfter, Duration
-from typing import Optional, List
 
 
-def access_permission_options(function):
+def access_permission_options(
+    function: Callable[..., None],
+) -> Callable[..., None]:
     function = click.option(
         "--max-object-ttl",
         type=Duration(),
@@ -71,17 +74,17 @@ class AccessPermission:
 
     def __init__(
         self,
-        prefixes: Optional[List[SharePrefix]] = None,
+        prefixes: list[grant.SharePrefix] | tuple[grant.SharePrefix, ...] | None = None,
         readonly: bool = False,
         writeonly: bool = False,
         disallow_deletes: bool = False,
         disallow_lists: bool = False,
         disallow_reads: bool = False,
         disallow_writes: bool = False,
-        not_before: Optional[datetime] = None,
-        not_after: Optional[datetime] = None,
-        max_object_ttl: Optional[timedelta] = None,
-    ):
+        not_before: datetime | None = None,
+        not_after: datetime | None = None,
+        max_object_ttl: timedelta | None = None,
+    ) -> None:
         self._prefixes = prefixes or []
         self._readonly = readonly
         self._writeonly = writeonly
@@ -94,38 +97,38 @@ class AccessPermission:
         self._max_object_ttl = max_object_ttl
 
     @property
-    def prefixes(self):
+    def prefixes(self) -> list[grant.SharePrefix] | tuple[grant.SharePrefix, ...]:
         return self._prefixes
 
     @property
-    def not_before(self):
+    def not_before(self) -> datetime | None:
         return self._not_before
 
     @property
-    def not_after(self):
+    def not_after(self) -> datetime | None:
         return self._not_after
 
     @property
-    def allow_delete(self):
+    def allow_delete(self) -> bool:
         return not (self._disallow_deletes or self._readonly)
 
     @property
-    def allow_list(self):
+    def allow_list(self) -> bool:
         return not (self._disallow_lists or self._writeonly)
 
     @property
-    def allow_download(self):
+    def allow_download(self) -> bool:
         return not (self._disallow_reads or self._writeonly)
 
     @property
-    def allow_upload(self):
+    def allow_upload(self) -> bool:
         return not (self._disallow_writes or self._readonly)
 
     @property
-    def max_object_ttl(self):
+    def max_object_ttl(self) -> timedelta | None:
         return self._max_object_ttl
 
-    def apply(self, access):
+    def apply(self, access: Access) -> Access:
         permission = grant.Permission(
             allow_delete=self.allow_delete,
             allow_list=self.allow_list,

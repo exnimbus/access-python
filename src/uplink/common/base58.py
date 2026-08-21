@@ -17,4 +17,4 @@ def check_encode(input: bytes, version: int) -> str:
     b = bytearray()
     b.append(version)
     b.extend(input)
-    return b58encode_check(b).decode()
+    return b58encode_check(bytes(b)).decode()

@@ -4,10 +4,10 @@
 from __future__ import annotations
 
 import copy
+from collections.abc import Callable
 from contextlib import ExitStack
 from uplink.common.storj import CipherSuite, Key
 from uplink.common.paths import Unencrypted, Encrypted, Iterator
-from typing import Dict, Tuple, Optional
 
 
 class Base:
@@ -20,7 +20,7 @@ class Base:
         unencrypted: Unencrypted = Unencrypted(),
         encrypted: Encrypted = Encrypted(),
         default: bool = False,
-    ):
+    ) -> None:
         self.unencrypted = unencrypted
         self.encrypted = encrypted
         self.key = key  # type: Key
@@ -28,7 +28,7 @@ class Base:
         self.default = default
 
     @staticmethod
-    def clone(base) -> Optional[Base]:
+    def clone(base: Base | None) -> Base | None:
         if base is None:
             return None
         return copy.deepcopy(base)
@@ -37,15 +37,14 @@ class Base:
 class _Node:
     __slots__ = ["_unenc", "_unenc_map", "_enc", "_enc_map", "_base"]
 
-    def __init__(self):
-        self._unenc = {}
-        self._unenc_map = {}
-        self._enc = {}
-        self._enc_map = {}
-        self._base = None
-        pass
+    def __init__(self) -> None:
+        self._unenc: dict[bytes, _Node] = {}
+        self._unenc_map: dict[bytes, bytes] = {}
+        self._enc: dict[bytes, _Node] = {}
+        self._enc_map: dict[bytes, bytes] = {}
+        self._base: Base | None = None
 
-    def add(self, unenc: Iterator, enc: Iterator, base: Base):
+    def add(self, unenc: Iterator, enc: Iterator, base: Base) -> None:
         """Places the path and base into the node tree structure."""
         if unenc.done != enc.done:
             raise ValueError(
@@ -84,10 +83,10 @@ class _Node:
         self,
         iter: Iterator,
         best_remaining: Iterator,
-        best_base: Optional[Base],
+        best_base: Base | None,
         unenc: bool,
         depth: int = 0,
-    ) -> Tuple[Dict[str, str], Iterator, Optional[Base]]:
+    ) -> tuple[dict[bytes, bytes], Iterator, Base | None]:
         if self._base is not None or best_base is None:
             best_remaining, best_base = iter.copy(), self._base
         revealed, children = self._unenc_map, self._enc
@@ -104,7 +103,11 @@ class _Node:
 
         return child.lookup(iter, best_remaining, best_base, unenc, depth + 1)
 
-    def iterate_with_cipher(self, fn, bucket):
+    def iterate_with_cipher(
+        self,
+        fn: Callable[[bytes, Unencrypted, Encrypted, Key, CipherSuite], None],
+        bucket: bytes,
+    ) -> None:
         if self._base is not None:
             fn(
                 bucket,
@@ -123,11 +126,11 @@ class Store:
 
     def __init__(
         self,
-        default_key: Optional[Key] = None,
+        default_key: Key | None = None,
         default_path_cipher: CipherSuite = CipherSuite.ENC_UNSPECIFIED,
         encryption_bypass: bool = False,
-    ):
-        self._roots = {}  # type: Dict[bytes,_Node]
+    ) -> None:
+        self._roots: dict[bytes, _Node] = {}
         self._default_key = default_key
         self._default_path_cipher = default_path_cipher
         self._encryption_bypass = encryption_bypass
@@ -137,12 +140,12 @@ class Store:
         return copy.deepcopy(store)
 
     @property
-    def default_key(self) -> Optional[Key]:
+    def default_key(self) -> Key | None:
         """Returns the default key that is returned for any lookup that does not match a bucket."""
         return self._default_key
 
     @default_key.setter
-    def default_key(self, default_key: Optional[Key]):
+    def default_key(self, default_key: Key | None) -> None:
         """Sets the default key to be returned for any lookup that does not match a bucket."""
         self._default_key = default_key
 
@@ -152,7 +155,7 @@ class Store:
         return self._default_path_cipher
 
     @default_path_cipher.setter
-    def default_path_cipher(self, default_path_cipher: CipherSuite):
+    def default_path_cipher(self, default_path_cipher: CipherSuite) -> None:
         """Sets the default path cipher for any lookup that does not match a bucket"""
         self._default_path_cipher = default_path_cipher
 
@@ -162,16 +165,18 @@ class Store:
         return self._encryption_bypass
 
     @encryption_bypass.setter
-    def encryption_bypass(self, encryption_bypass: bool):
+    def encryption_bypass(self, encryption_bypass: bool) -> None:
         """Sets the default path cipher for any lookup that does not match a bucket"""
         self._encryption_bypass = encryption_bypass
 
-    def iterate_with_cipher(self, fn):
+    def iterate_with_cipher(
+        self, fn: Callable[[bytes, Unencrypted, Encrypted, Key, CipherSuite], None]
+    ) -> None:
         """Executes the callback with every value that has been added to the Store"""
         for bucket, root in self._roots.items():
             root.iterate_with_cipher(fn, bucket)
 
-    def add(self, bucket: bytes, unenc: Unencrypted, enc: Encrypted, key: Key):
+    def add(self, bucket: bytes, unenc: Unencrypted, enc: Encrypted, key: Key) -> None:
         return self.add_with_cipher(bucket, unenc, enc, key, self.default_path_cipher)
 
     def add_with_cipher(
@@ -181,7 +186,7 @@ class Store:
         enc: Encrypted,
         key: Key,
         path_cipher: CipherSuite,
-    ):
+    ) -> None:
         """Creates a mapping from the unencrypted path to the encrypted path and key with the given cipher."""
         root = self._roots.get(bucket)
         if root is None:
@@ -194,13 +199,13 @@ class Store:
         )
         self._roots[bucket] = root
 
-    def default_base(self, default_key: Key):
+    def default_base(self, default_key: Key) -> Base:
         return Base(key=default_key, path_cipher=self.default_path_cipher, default=True)
 
     def lookup_unencrypted(
         self, bucket: bytes, path: Unencrypted
-    ) -> Tuple[Dict[str, str], Iterator, Optional[Base]]:
-        revealed: Dict[str, str] = {}
+    ) -> tuple[dict[bytes, bytes], Iterator, Base | None]:
+        revealed: dict[bytes, bytes] = {}
         remaining = Iterator()
         base = None
 
@@ -221,8 +226,8 @@ class Store:
 
     def lookup_encrypted(
         self, bucket: bytes, path: Encrypted
-    ) -> Tuple[Dict[str, str], Iterator, Optional[Base]]:
-        revealed: Dict[str, str] = {}
+    ) -> tuple[dict[bytes, bytes], Iterator, Base | None]:
+        revealed: dict[bytes, bytes] = {}
         remaining = Iterator()
         base = None
 
@@ -241,12 +246,14 @@ class Store:
 
         return revealed, remaining, self._bypass_encryption(Base.clone(base))
 
-    def _bypass_encryption(self, base):
+    def _bypass_encryption(self, base: Base | None) -> Base | None:
         if base is not None and self.encryption_bypass:
             base.path_cipher = CipherSuite.ENC_NULL_BASE64URL
         return base
 
 
-def key_exists_but_value_not_equal(m, key, expect_value):
+def key_exists_but_value_not_equal(
+    m: dict[bytes, bytes], key: bytes, expect_value: bytes
+) -> bool:
     value = m.get(key)
     return value is not None and value != expect_value

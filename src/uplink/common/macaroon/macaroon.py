@@ -1,17 +1,16 @@
 # Copyright (C) 2020 Storj Labs, Inc.
 # See LICENSE for copying information.
 
+from __future__ import annotations
+
 import hmac
 import hashlib
 import os
 from enum import IntEnum, unique
-from collections import namedtuple
 from collections.abc import Iterable
-from typing import Tuple, List, Optional
+from typing import NamedTuple
 from . import types_pb2 as types_pb2
 import struct
-
-Packet = namedtuple("Packet", ["field_type", "data"])
 
 
 @unique
@@ -23,6 +22,11 @@ class FieldType(IntEnum):
     SIGNATURE = 6
 
 
+class Packet(NamedTuple):
+    field_type: FieldType
+    data: bytes | None
+
+
 class Macaroon:
     VERSION = 2
 
@@ -32,14 +36,14 @@ class Macaroon:
         self,
         head: bytes = bytes(),
         tail: bytes = bytes(),
-        caveats: Optional[List[bytes]] = None,
-    ):
+        caveats: list[bytes] | None = None,
+    ) -> None:
         self.head = head
         self.tail = tail
         self.caveats = caveats or []
 
     @staticmethod
-    def parse(data: bytes):
+    def parse(data: bytes) -> Macaroon:
         if len(data) < 2:
             raise Exception("empty macaroon")
         if data[0] != Macaroon.VERSION:
@@ -52,7 +56,10 @@ class Macaroon:
             raise Exception("invalid macaroon header")
 
         mac = Macaroon()
-        mac.head = section[0].data
+        head = section[0].data
+        if head is None:
+            raise Exception("invalid macaroon header")
+        mac.head = head
         while True:
             data, section = parse_section(data)
             if len(section) == 0:
@@ -62,6 +69,8 @@ class Macaroon:
             if len(section) == 0 or section[0].field_type != FieldType.IDENTIFIER:
                 raise Exception("no Identifier in caveat")
             cav = section[0].data
+            if cav is None:
+                raise Exception("no Identifier in caveat")
             section = section[1:]
             if len(section) == 0:
                 # first party caveat
@@ -75,12 +84,12 @@ class Macaroon:
         _, sig = parse_packet(data)
         if sig.field_type != FieldType.SIGNATURE:
             raise Exception("unexpected field found instead of signature")
-        if len(sig.data) != 32:
+        if sig.data is None or len(sig.data) != 32:
             raise Exception("signature has unexpected length")
         mac.tail = sig.data
         return mac
 
-    def serialize(self):
+    def serialize(self) -> bytes:
         # Start data from version int
         b = bytearray(b"\x02")
 
@@ -100,21 +109,21 @@ class Macaroon:
 
         return bytes(b)
 
-    def copy(self):
+    def copy(self) -> Macaroon:
         return Macaroon(
             head=self.head,
             tail=self.tail,
             caveats=self.caveats.copy(),
         )
 
-    def add_first_party_caveat(self, caveat: bytes):
+    def add_first_party_caveat(self, caveat: bytes) -> Macaroon:
         macaroon = self.copy()
         macaroon.caveats.append(caveat)
         macaroon.tail = _sign(macaroon.tail, caveat)
         return macaroon
 
-    def validate_and_tails(self, secret: bytes) -> Tuple[bool, List[bytes]]:
-        tails = []
+    def validate_and_tails(self, secret: bytes) -> tuple[bool, list[bytes]]:
+        tails: list[bytes] = []
         tail = _sign(secret, self.head)
         tails.append(tail)
         for cav in self.caveats:
@@ -123,9 +132,9 @@ class Macaroon:
         return hmac.compare_digest(tail, self.tail), tails
 
 
-def parse_section(data: bytes):
+def parse_section(data: bytes) -> tuple[bytes, list[Packet]]:
     prev_field_type = -1
-    packets: List[Packet] = []
+    packets: list[Packet] = []
     while True:
         if len(data) == 0:
             raise Exception("section extends past end of buffer")
@@ -143,7 +152,7 @@ def parse_section(data: bytes):
         data = rest
 
 
-def parse_packet(data: bytes) -> Tuple[bytes, Packet]:
+def parse_packet(data: bytes) -> tuple[bytes, Packet]:
     data, field_type_value = parse_varint(data)
 
     field_type = FieldType(field_type_value)
@@ -162,14 +171,14 @@ def parse_packet(data: bytes) -> Tuple[bytes, Packet]:
     return data[pack_len:], p
 
 
-def parse_varint(data: bytes):
+def parse_varint(data: bytes) -> tuple[bytes, int]:
     value, n = uvarint(data)
     if n <= 0 or value > 0x7FFFFFFF:
         raise Exception("varint error")
     return data[n:], value
 
 
-def uvarint(data: bytes):
+def uvarint(data: bytes) -> tuple[int, int]:
     MAXVARINTLEN64 = 10
     x = 0
     s = 0
@@ -185,13 +194,13 @@ def uvarint(data: bytes):
     return 0, 0
 
 
-def serialize_packet(buf: bytearray, field_type: FieldType, data: bytes):
+def serialize_packet(buf: bytearray, field_type: FieldType, data: bytes) -> None:
     append_varint(buf, field_type)
     append_varint(buf, len(data))
     buf.extend(data)
 
 
-def append_varint(buf: bytearray, x: int):
+def append_varint(buf: bytearray, x: int) -> None:
     while x >= 0x80:
         buf.append(x | 0x80)
         x >>= 7
@@ -211,5 +220,5 @@ def new_unrestricted_from_parts(head: bytes, secret: bytes) -> Macaroon:
     return Macaroon(head=head, tail=_sign(secret, head))
 
 
-def _sign(secret: bytes, data: bytes):
+def _sign(secret: bytes, data: bytes) -> bytes:
     return hmac.new(secret, msg=data, digestmod=hashlib.sha256).digest()

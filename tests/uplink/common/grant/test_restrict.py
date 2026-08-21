@@ -16,7 +16,7 @@ from uplink.common.storj import CipherSuite
 from uplink.common import paths
 
 
-def test_restrict():
+def test_restrict() -> None:
     secret = macaroon.new_secret()
 
     api_key = macaroon.new_api_key(secret)
