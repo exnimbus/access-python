@@ -17,7 +17,6 @@ from uplink.common.encryption import Store
 from uplink.common.encryption.store import Base
 from uplink.common import paths
 
-
 ep = paths.Encrypted
 up = paths.Unencrypted
 

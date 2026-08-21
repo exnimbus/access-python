@@ -12,7 +12,6 @@ from typing import Optional
 import hmac
 import hashlib
 
-
 AESGCM_NONCE_SIZE = 12
 _EMPTY_COMPONENT_PREFIX = 1
 _EMPTY_COMPONENT = _EMPTY_COMPONENT_PREFIX.to_bytes()
