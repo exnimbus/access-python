@@ -2,9 +2,13 @@
 # See LICENSE for copying information.
 
 from collections.abc import Sequence
+import hashlib
+import hmac
 from uplink.common import grant
 from uplink.common import macaroon
+from uplink.common import metainfo
 from uplink.common.storj import NodeURL
+from uplink.common.storj import CipherSuite, Key
 from uplink.common import rpc
 
 
@@ -30,6 +34,66 @@ def parse_node_url(address: str) -> NodeURL:
         node_url.id = node_id
 
     return node_url
+
+
+def request_access_with_passphrase(
+    satellite_address: str, api_key: str, passphrase: str
+) -> "Access":
+    return Config().request_access_with_passphrase(
+        satellite_address, api_key, passphrase
+    )
+
+
+class Config:
+    def __init__(self, user_agent: str = "", dial_timeout: float = 20.0) -> None:
+        if dial_timeout <= 0:
+            raise ValueError("dial timeout must be positive")
+        self.user_agent = user_agent
+        self.dial_timeout = dial_timeout
+
+    def request_access_with_passphrase(
+        self, satellite_address: str, api_key: str, passphrase: str
+    ) -> "Access":
+        try:
+            parsed_api_key = macaroon.APIKey.parse(api_key)
+            satellite_url = parse_node_url(satellite_address)
+        except ValueError as exc:
+            raise ValueError(f"access request is malformed: {exc}") from exc
+
+        salt = metainfo.project_salt(
+            satellite_url,
+            parsed_api_key.serialize_raw(),
+            self.user_agent,
+            self.dial_timeout,
+        )
+        try:
+            key = _derive_root_key(passphrase, salt)
+        except Exception as exc:
+            raise ValueError("could not derive access root key") from exc
+        enc_access = grant.EncryptionAccess(key)
+        enc_access.default_path_cipher = CipherSuite.ENC_AESGCM
+        enc_access.limit_to(parsed_api_key)
+        return Access(satellite_url, parsed_api_key, enc_access)
+
+
+def _derive_root_key(passphrase: str, project_salt: bytes) -> Key:
+    from argon2.low_level import Type, hash_secret_raw
+
+    password = passphrase.encode()
+    mixed_salt = hmac.new(password, project_salt, hashlib.sha256).digest()
+    path_salt = hmac.new(mixed_salt, b"", hashlib.sha256).digest()
+    return Key(
+        hash_secret_raw(
+            password,
+            path_salt,
+            time_cost=1,
+            memory_cost=65536,
+            parallelism=8,
+            hash_len=32,
+            type=Type.ID,
+            version=19,
+        )
+    )
 
 
 class Access:
