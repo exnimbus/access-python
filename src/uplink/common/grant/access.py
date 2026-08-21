@@ -63,6 +63,9 @@ class Access:
     def restrict(
         self, permission: Permission, prefixes: Sequence[SharePrefix] = []
     ) -> Access:
+        if permission.empty:
+            raise ValueError("permission is empty")
+
         not_before = permission.not_before
         not_after = permission.not_after
 
@@ -75,12 +78,37 @@ class Access:
         ):
             raise ValueError("non-positive ttl period")
 
+        # Every disallow bit is written explicitly, including the ones the caller
+        # did not ask about. Caveat booleans are proto3 scalars, so a field left
+        # unset is indistinguishable from an explicit "allowed" on the wire, and
+        # a child grant would silently keep any capability this build does not
+        # know to deny.
         caveat = macaroon.caveat_with_nonce(
             macaroon.Caveat(
                 disallow_reads=not permission.allow_download,
                 disallow_writes=not permission.allow_upload,
                 disallow_lists=not permission.allow_list,
                 disallow_deletes=not permission.allow_delete,
+                disallow_locks=not permission.allow_lock,
+                disallow_put_retention=not permission.allow_put_object_retention,
+                disallow_get_retention=not permission.allow_get_object_retention,
+                disallow_put_legal_hold=not permission.allow_put_object_legal_hold,
+                disallow_get_legal_hold=not permission.allow_get_object_legal_hold,
+                disallow_bypass_governance_retention=(
+                    not permission.allow_bypass_governance_retention
+                ),
+                disallow_put_bucket_object_lock_configuration=(
+                    not permission.allow_put_bucket_object_lock_configuration
+                ),
+                disallow_get_bucket_object_lock_configuration=(
+                    not permission.allow_get_bucket_object_lock_configuration
+                ),
+                disallow_put_bucket_notification_configuration=(
+                    not permission.allow_put_bucket_notification_configuration
+                ),
+                disallow_get_bucket_notification_configuration=(
+                    not permission.allow_get_bucket_notification_configuration
+                ),
                 not_before=_opt_timestamp(not_before),
                 not_after=_opt_timestamp(not_after),
                 max_object_ttl=_opt_duration(permission.max_object_ttl),

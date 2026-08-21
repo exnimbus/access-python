@@ -16,7 +16,7 @@ from google.protobuf import duration_pb2 as google_dot_protobuf_dot_duration__pb
 from google.protobuf import timestamp_pb2 as google_dot_protobuf_dot_timestamp__pb2
 
 
-DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n\"uplink/common/macaroon/types.proto\x12\x08macaroon\x1a\x1egoogle/protobuf/duration.proto\x1a\x1fgoogle/protobuf/timestamp.proto\"\xf1\x02\n\x06\x43\x61veat\x12\x16\n\x0e\x64isallow_reads\x18\x01 \x01(\x08\x12\x17\n\x0f\x64isallow_writes\x18\x02 \x01(\x08\x12\x16\n\x0e\x64isallow_lists\x18\x03 \x01(\x08\x12\x18\n\x10\x64isallow_deletes\x18\x04 \x01(\x08\x12,\n\rallowed_paths\x18\n \x03(\x0b\x32\x15.macaroon.Caveat.Path\x12-\n\tnot_after\x18\x14 \x01(\x0b\x32\x1a.google.protobuf.Timestamp\x12.\n\nnot_before\x18\x15 \x01(\x0b\x32\x1a.google.protobuf.Timestamp\x12\x31\n\x0emax_object_ttl\x18\x16 \x01(\x0b\x32\x19.google.protobuf.Duration\x12\r\n\x05nonce\x18\x1e \x01(\x0c\x1a\x35\n\x04Path\x12\x0e\n\x06\x62ucket\x18\x01 \x01(\x0c\x12\x1d\n\x15\x65ncrypted_path_prefix\x18\x02 \x01(\x0c\x42\x1aZ\x18storj.io/common/macaroonb\x06proto3')
+DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n\"uplink/common/macaroon/types.proto\x12\x08macaroon\x1a\x1egoogle/protobuf/duration.proto\x1a\x1fgoogle/protobuf/timestamp.proto\"\x97\x06\n\x06\x43\x61veat\x12\x16\n\x0e\x64isallow_reads\x18\x01 \x01(\x08\x12\x17\n\x0f\x64isallow_writes\x18\x02 \x01(\x08\x12\x16\n\x0e\x64isallow_lists\x18\x03 \x01(\x08\x12\x18\n\x10\x64isallow_deletes\x18\x04 \x01(\x08\x12\x16\n\x0e\x64isallow_locks\x18\x05 \x01(\x08\x12\x1e\n\x16\x64isallow_put_retention\x18\x06 \x01(\x08\x12\x1e\n\x16\x64isallow_get_retention\x18\x07 \x01(\x08\x12\x1f\n\x17\x64isallow_put_legal_hold\x18\x08 \x01(\x08\x12\x1f\n\x17\x64isallow_get_legal_hold\x18\t \x01(\x08\x12,\n$disallow_bypass_governance_retention\x18\x0b \x01(\x08\x12\x35\n-disallow_put_bucket_object_lock_configuration\x18\x0c \x01(\x08\x12\x35\n-disallow_get_bucket_object_lock_configuration\x18\r \x01(\x08\x12\x36\n.disallow_put_bucket_notification_configuration\x18\x0e \x01(\x08\x12\x36\n.disallow_get_bucket_notification_configuration\x18\x0f \x01(\x08\x12,\n\rallowed_paths\x18\n \x03(\x0b\x32\x15.macaroon.Caveat.Path\x12-\n\tnot_after\x18\x14 \x01(\x0b\x32\x1a.google.protobuf.Timestamp\x12.\n\nnot_before\x18\x15 \x01(\x0b\x32\x1a.google.protobuf.Timestamp\x12\x31\n\x0emax_object_ttl\x18\x16 \x01(\x0b\x32\x19.google.protobuf.Duration\x12\r\n\x05nonce\x18\x1e \x01(\x0c\x1a\x35\n\x04Path\x12\x0e\n\x06\x62ucket\x18\x01 \x01(\x0c\x12\x1d\n\x15\x65ncrypted_path_prefix\x18\x02 \x01(\x0c\x42\x1aZ\x18storj.io/common/macaroonb\x06proto3')
 
 _globals = globals()
 _builder.BuildMessageAndEnumDescriptors(DESCRIPTOR, _globals)
@@ -25,7 +25,7 @@ if _descriptor._USE_C_DESCRIPTORS == False:
   _globals['DESCRIPTOR']._options = None
   _globals['DESCRIPTOR']._serialized_options = b'Z\030storj.io/common/macaroon'
   _globals['_CAVEAT']._serialized_start=114
-  _globals['_CAVEAT']._serialized_end=483
-  _globals['_CAVEAT_PATH']._serialized_start=430
-  _globals['_CAVEAT_PATH']._serialized_end=483
+  _globals['_CAVEAT']._serialized_end=905
+  _globals['_CAVEAT_PATH']._serialized_start=852
+  _globals['_CAVEAT_PATH']._serialized_end=905
 # @@protoc_insertion_point(module_scope)

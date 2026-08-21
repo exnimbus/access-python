@@ -17,12 +17,23 @@ class UnauthorizedError(Exception):
 
 
 class ActionType(Enum):
+    # These values are persisted in macaroons, so they must never be renumbered.
     ACTION_UNSPECIFIED = 0
     ACTION_READ = 1
     ACTION_WRITE = 2
     ACTION_LIST = 3
     ACTION_DELETE = 4
     ACTION_PROJECT_INFO = 5
+    ACTION_LOCK = 6
+    ACTION_PUT_OBJECT_RETENTION = 7
+    ACTION_GET_OBJECT_RETENTION = 8
+    ACTION_PUT_OBJECT_LEGAL_HOLD = 9
+    ACTION_GET_OBJECT_LEGAL_HOLD = 10
+    ACTION_BYPASS_GOVERNANCE_RETENTION = 11
+    ACTION_PUT_BUCKET_OBJECT_LOCK_CONFIGURATION = 12
+    ACTION_GET_BUCKET_OBJECT_LOCK_CONFIGURATION = 13
+    ACTION_PUT_BUCKET_NOTIFICATION_CONFIGURATION = 14
+    ACTION_GET_BUCKET_NOTIFICATION_CONFIGURATION = 15
 
 
 class Action:
@@ -126,6 +137,40 @@ def caveat_allows(c: Caveat, action: Action) -> bool:
     elif action.op == ActionType.ACTION_PROJECT_INFO:
         # allow
         pass
+    elif action.op == ActionType.ACTION_LOCK:
+        if c.disallow_locks:
+            return False
+    elif action.op == ActionType.ACTION_PUT_OBJECT_RETENTION:
+        if c.disallow_put_retention:
+            return False
+    elif action.op == ActionType.ACTION_GET_OBJECT_RETENTION:
+        # Mirrors storj.io/common/macaroon: reading a retention period is only
+        # denied when *both* retention bits are set, so that grants which were
+        # allowed to set retention can still read it back.
+        if c.disallow_put_retention:
+            if c.disallow_get_retention:
+                return False
+    elif action.op == ActionType.ACTION_PUT_OBJECT_LEGAL_HOLD:
+        if c.disallow_put_legal_hold:
+            return False
+    elif action.op == ActionType.ACTION_GET_OBJECT_LEGAL_HOLD:
+        if c.disallow_get_legal_hold:
+            return False
+    elif action.op == ActionType.ACTION_BYPASS_GOVERNANCE_RETENTION:
+        if c.disallow_bypass_governance_retention:
+            return False
+    elif action.op == ActionType.ACTION_PUT_BUCKET_OBJECT_LOCK_CONFIGURATION:
+        if c.disallow_put_bucket_object_lock_configuration:
+            return False
+    elif action.op == ActionType.ACTION_GET_BUCKET_OBJECT_LOCK_CONFIGURATION:
+        if c.disallow_get_bucket_object_lock_configuration:
+            return False
+    elif action.op == ActionType.ACTION_PUT_BUCKET_NOTIFICATION_CONFIGURATION:
+        if c.disallow_put_bucket_notification_configuration:
+            return False
+    elif action.op == ActionType.ACTION_GET_BUCKET_NOTIFICATION_CONFIGURATION:
+        if c.disallow_get_bucket_notification_configuration:
+            return False
     else:
         return False
 
