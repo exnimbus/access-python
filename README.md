@@ -46,6 +46,13 @@ This repo uses `tox` for test execution. To run tests, do the following:
 
        (.venv) $ tox
 
+### Access Grant Interoperability Fixtures
+
+Regenerate the synthetic Go/Python fixtures (no satellite or credentials are
+used) with Go 1.25 or newer:
+
+       PYTHONPATH=src python tests/interop/test_access_grant_interop.py
+
 ### Protobuf (Re)generation
 
 The proto files in this repo were copied from [storj/common](https://github.com/storj/common). The import statements were modified to be relative to the src directory, which is paramount to ensure the python import statements in the generated code will work.
