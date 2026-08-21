@@ -33,7 +33,8 @@ access = 'uplink.scripts.main:main'
 [project.optional-dependencies]
 dev = [
     "black >=22.3.0",
-    "mypy-protobuf >=3.5.0"
+    "mypy-protobuf >=3.5.0",
+    "pyrefly==1.2.0",
 ]
 test = [
     "pytest >=7",
@@ -42,6 +43,20 @@ test = [
 
 [tool.black]
 extend-exclude = '.*_pb2.py'
+
+[tool.pyrefly]
+project-includes = ["src", "tests"]
+project-excludes = ["**/*_pb2.py"]
+python-version = "3.11"
+check-unannotated-defs = true
+
+[tool.pyrefly.errors]
+implicit-any = "error"
+no-any-return = "error"
+unannotated-return = "error"
+unknown-argument-type = "error"
+unknown-attribute-type = "error"
+unknown-variable-type = "error"
 
 [tool.pytest.ini_options]
 addopts = [

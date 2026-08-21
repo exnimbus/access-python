@@ -7,7 +7,6 @@ from uplink.common.macaroon import new_api_key
 from uplink.common.grant import EncryptionAccess
 from uplink.common.storj import CipherSuite, Key
 from uplink.common.paths import Encrypted, Unencrypted
-from typing import List
 
 
 # these strings can be of the form <bucket>|<path> or just <path> where the
@@ -52,14 +51,16 @@ from typing import List
         ),
     ],
 )
-def test_limit_to(groups, valid, invalid):
-    def split(prefix: str):
+def test_limit_to(
+    groups: list[list[str]], valid: list[str], invalid: list[str]
+) -> None:
+    def split(prefix: str) -> tuple[bytes, bytes]:
         idx = prefix.find("|")
         if idx >= 0:
             return prefix[:idx].encode(), prefix[idx + 1 :].encode()
         return b"bucket", prefix.encode()
 
-    def to_caveat(group: List[str]):
+    def to_caveat(group: list[str]) -> macaroon.Caveat:
         caveat = macaroon.Caveat()
         for prefix in group:
             bucket, path = split(prefix)
@@ -78,18 +79,18 @@ def test_limit_to(groups, valid, invalid):
     enc_access.default_path_cipher = CipherSuite.ENC_NULL
     enc_access.limit_to(api_key)
 
-    for valid in valid:
-        bucket, path = split(valid)
+    for valid_prefix in valid:
+        bucket, path = split(valid_prefix)
         _, _, base = enc_access.store.lookup_encrypted(bucket, Encrypted(path))
         assert base is not None
 
-    for invalid in invalid:
-        bucket, path = split(invalid)
+    for invalid_prefix in invalid:
+        bucket, path = split(invalid_prefix)
         _, _, base = enc_access.store.lookup_encrypted(bucket, Encrypted(path))
         assert base is None
 
 
-def test_limit_to_fails_closed_for_malformed_caveat():
+def test_limit_to_fails_closed_for_malformed_caveat() -> None:
     api_key = new_api_key(bytes())
     api_key.mac.caveats.append(b"\xff")
     enc_access = EncryptionAccess(Key.newzero())
@@ -103,13 +104,23 @@ def test_limit_to_fails_closed_for_malformed_caveat():
 
     enc_access.limit_to(api_key)
 
-    entries = []
-    enc_access.store.iterate_with_cipher(lambda *entry: entries.append(entry))
+    entries: list[tuple[bytes, Unencrypted, Encrypted, Key, CipherSuite]] = []
+
+    def append_entry(
+        bucket: bytes,
+        unencrypted: Unencrypted,
+        encrypted: Encrypted,
+        key: Key,
+        cipher: CipherSuite,
+    ) -> None:
+        entries.append((bucket, unencrypted, encrypted, key, cipher))
+
+    enc_access.store.iterate_with_cipher(append_entry)
     assert enc_access.default_key is None
     assert entries == []
 
 
-def test_limit_to_preserves_unrestricted_store():
+def test_limit_to_preserves_unrestricted_store() -> None:
     enc_access = EncryptionAccess(Key.newzero())
     store = enc_access.store
 
@@ -119,7 +130,7 @@ def test_limit_to_preserves_unrestricted_store():
     assert enc_access.default_key == Key.newzero()
 
 
-def test_limit_to_preserves_cipher_for_valid_restrictions():
+def test_limit_to_preserves_cipher_for_valid_restrictions() -> None:
     enc_access = EncryptionAccess(Key.newzero())
     enc_access.default_path_cipher = CipherSuite.ENC_AESGCM
     encrypted = encryption.encrypt_path_with_store_cipher(
@@ -136,7 +147,7 @@ def test_limit_to_preserves_cipher_for_valid_restrictions():
     assert enc_access.store.lookup_encrypted(b"bucket", encrypted)[2] is not None
 
 
-def test_limit_to_skips_unusable_prefix():
+def test_limit_to_skips_unusable_prefix() -> None:
     enc_access = EncryptionAccess(Key.newzero())
     enc_access.default_path_cipher = CipherSuite.ENC_AESGCM
     encrypted = encryption.encrypt_path_with_store_cipher(

@@ -1,6 +1,8 @@
 # Copyright (C) 2023 Storj Labs, Inc.
 # See LICENSE for copying information.
 
+from __future__ import annotations
+
 import os
 from enum import Enum
 from uplink.common import base58
@@ -8,7 +10,6 @@ from datetime import datetime
 from google.protobuf.timestamp_pb2 import Timestamp
 from .macaroon import Macaroon, new_unrestricted
 from .caveat import Caveat
-from typing import Optional
 
 
 class UnauthorizedError(Exception):
@@ -29,7 +30,7 @@ class Action:
 
     def __init__(
         self, op: ActionType, bucket: bytes, encrypted_path: bytes, time: datetime
-    ):
+    ) -> None:
         self.op = op
         self.bucket = bucket
         self.encrypted_path = encrypted_path
@@ -39,31 +40,31 @@ class Action:
 class APIKey:
     __slots__ = ["mac"]
 
-    def __init__(self, mac: Macaroon):
+    def __init__(self, mac: Macaroon) -> None:
         self.mac = mac
 
     @staticmethod
-    def parse(key: str):
+    def parse(key: str) -> APIKey:
         data, version = base58.check_decode(key)
         if version != 0:
             raise ValueError("invalid api key format")
         return APIKey.parse_raw(data)
 
     @staticmethod
-    def parse_raw(data: bytes):
+    def parse_raw(data: bytes) -> APIKey:
         mac = Macaroon.parse(data)
         return APIKey(mac=mac)
 
-    def serialize_raw(self):
+    def serialize_raw(self) -> bytes:
         return self.mac.serialize()
 
-    def restrict(self, caveat: Caveat):
+    def restrict(self, caveat: Caveat) -> APIKey:
         caveat_bytes = caveat.SerializeToString()
         mac = self.mac.add_first_party_caveat(caveat_bytes)
         return APIKey(mac)
 
     # TODO: implement revoker
-    def check(self, secret: bytes, action: Action):
+    def check(self, secret: bytes, action: Action) -> None:
         ok, tails = self.mac.validate_and_tails(secret)
         if not ok:
             raise ValueError("macaroon unauthorized")
@@ -85,7 +86,7 @@ def new_api_key(secret: bytes) -> APIKey:
     return APIKey(mac)
 
 
-def caveat_allows(c: Caveat, action: Action):
+def caveat_allows(c: Caveat, action: Action) -> bool:
     # if the action is after the caveat's "not after" field, then it is invalid
     if is_valid_timestamp(c.not_after) and action.time > c.not_after.ToDatetime():
         return False
@@ -142,7 +143,7 @@ def caveat_allows(c: Caveat, action: Action):
     return True
 
 
-def is_valid_timestamp(ts: Optional[Timestamp]):
+def is_valid_timestamp(ts: Timestamp | None) -> bool:
     if ts is None:
         return False
     if ts == Timestamp():

@@ -14,6 +14,7 @@ from uplink.common.grant import (
 from uplink.common.macaroon import Action, ActionType, UnauthorizedError
 from uplink.common.storj import CipherSuite, Key
 from uplink.common.encryption import Store
+from uplink.common.encryption.store import Base
 from uplink.common import paths
 
 
@@ -28,7 +29,7 @@ PATH_CIPHERS = [
 ]
 
 
-def test_example_store():
+def test_example_store() -> None:
     s = Store(default_path_cipher=CipherSuite.ENC_AESGCM)
 
     # Add a fairly complicated tree to the store.
@@ -110,7 +111,7 @@ def test_example_store():
     )
 
 
-def test_example_set_default_key():
+def test_example_set_default_key() -> None:
     dk = make_key("dk")
     s = Store(default_path_cipher=CipherSuite.ENC_AESGCM, default_key=dk)
 
@@ -151,7 +152,7 @@ def test_example_set_default_key():
     )
 
 
-def test_store_errors():
+def test_store_errors() -> None:
     key = Key.newzero()
     for path_cipher in PATH_CIPHERS:
         s = Store()
@@ -173,7 +174,7 @@ def test_store_errors():
             s.add_with_cipher(b"b1", up(b"u1"), ep(b"f1"), key, path_cipher)
 
 
-def test_store_error_state():
+def test_store_error_state() -> None:
     s = Store()
 
     # Do an empty lookup.
@@ -194,40 +195,50 @@ def test_store_error_state():
     assert base1 == base2
 
 
-def test_store_iterate():
+def test_store_iterate() -> None:
     for path_cipher in PATH_CIPHERS:
         for bypass in [False, True]:
             s = Store(encryption_bypass=bypass)
 
-            expected = [
-                [b"b1", up(b"u1/u2/u3"), ep(b"e1/e2/e3"), make_key("k3"), path_cipher],
-                [
+            expected: list[
+                tuple[bytes, paths.Unencrypted, paths.Encrypted, Key, CipherSuite]
+            ] = [
+                (b"b1", up(b"u1/u2/u3"), ep(b"e1/e2/e3"), make_key("k3"), path_cipher),
+                (
                     b"b1",
                     up(b"u1/u2/u3/u4"),
                     ep(b"e1/e2/e3/e4"),
                     make_key("k4"),
                     path_cipher,
-                ],
-                [b"b1", up(b"u1/u5"), ep(b"e1/e5"), make_key("k5"), path_cipher],
-                [b"b1", up(b"u6"), ep(b"e6"), make_key("k6"), path_cipher],
-                [b"b1", up(b"u6/u7/u8"), ep(b"e6/e7/e8"), make_key("k8"), path_cipher],
-                [b"b2", up(b"u1"), ep(b"e1'"), make_key("k1"), path_cipher],
-                [b"b3", up(), ep(), make_key("m1"), path_cipher],
+                ),
+                (b"b1", up(b"u1/u5"), ep(b"e1/e5"), make_key("k5"), path_cipher),
+                (b"b1", up(b"u6"), ep(b"e6"), make_key("k6"), path_cipher),
+                (b"b1", up(b"u6/u7/u8"), ep(b"e6/e7/e8"), make_key("k8"), path_cipher),
+                (b"b2", up(b"u1"), ep(b"e1'"), make_key("k1"), path_cipher),
+                (b"b3", up(), ep(), make_key("m1"), path_cipher),
             ]
 
             for entry in expected:
                 s.add_with_cipher(entry[0], entry[1], entry[2], entry[3], entry[4])
 
-            got = []
+            got: list[
+                tuple[bytes, paths.Unencrypted, paths.Encrypted, Key, CipherSuite]
+            ] = []
 
-            def append_result(bucket, unenc, enc, key, path_cipher):
-                got.append([bucket, unenc, enc, key, path_cipher])
+            def append_result(
+                bucket: bytes,
+                unenc: paths.Unencrypted,
+                enc: paths.Encrypted,
+                key: Key,
+                path_cipher: CipherSuite,
+            ) -> None:
+                got.append((bucket, unenc, enc, key, path_cipher))
 
             s.iterate_with_cipher(append_result)
             assert expected == got
 
 
-def test_store_encryption_bypass():
+def test_store_encryption_bypass() -> None:
     s = Store(default_key=make_key(), default_path_cipher=CipherSuite.ENC_AESGCM)
 
     _, _, base = s.lookup_unencrypted(b"bucket", paths.Unencrypted())
@@ -240,7 +251,7 @@ def test_store_encryption_bypass():
 
 
 @pytest.mark.skip
-def test_store_clone():
+def test_store_clone() -> None:
     # clone is not implemented yet
     pass
 
@@ -252,13 +263,15 @@ def make_key(s: str = "") -> Key:
 
 
 def consume_iter(iter: paths.Iterator) -> str:
-    parts = []
+    parts: list[bytes] = []
     while not iter.done:
         parts.append(iter.next())
     return f"{parts}"
 
 
-def render_lookup(revealed, remaining, base):
+def render_lookup(
+    revealed: dict[bytes, bytes], remaining: paths.Iterator, base: Base | None
+) -> str:
     if base is None:
         return f"<{revealed}, {consume_iter(remaining)}, nil>"
-    return f"<{revealed}, {consume_iter(remaining)}, <'{base.unencrypted}', '{base.encrypted}', {bytes(base.key)[:2]}, {base.default}>>"
+    return f"<{revealed}, {consume_iter(remaining)}, <'{base.unencrypted}', '{base.encrypted}', {bytes(base.key)[:2]!r}, {base.default}>>"

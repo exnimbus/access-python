@@ -12,7 +12,7 @@ from uplink import edge
 EXAMPLE_ACCESS = "15M6fjomdWMwh4cdbZx5YmDQpQsc8EN73sYKcfLodh6yz6PXEbNJe1WKFvKrwMotebVhRWPiihQoPEuKkaEt1reW5WhPwipmRZnqcfnA483LwehmgUdV1wzftUQ7rArkEJNkVCYJXiaUeWMUNmC2qc6y2nv92LCLQTj2ypoLR7A6ua8yzjEcvfdop5yr12yPMesWvwkqMFwc7gi2GJTnaBrhic55aHfk4K7c1dJuhw33VYHZvsiDU1J2RePppMaxbhTen54cGcNB5Dzz76FjJWSesB4JnHPh7"
 
 
-def test_restrict_readonly_example():
+def test_restrict_readonly_example() -> None:
     """example that restricts an access grant to read-only operations for the next week"""
     now = datetime.now()
     later = now + timedelta(weeks=1)
@@ -31,7 +31,7 @@ def test_restrict_readonly_example():
     print(restricted.serialize())
 
 
-def test_restrict_uploadonly_example():
+def test_restrict_uploadonly_example() -> None:
     """example that restricts an access grant to uploading short-lived operations for the next week"""
 
     now = datetime.now()
@@ -53,7 +53,7 @@ def test_restrict_uploadonly_example():
 
 
 @pytest.mark.skip("Skipped because this example registers with an external service")
-def test_register_example():
+def test_register_example() -> None:
     # The edge service to register with
     auth_service_url = "https://auth.storjshare.io"
 

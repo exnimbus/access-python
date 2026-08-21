@@ -1,12 +1,14 @@
 # Copyright (C) 2023 Storj Labs, Inc.
 # See LICENSE for copying information.
 
+from collections.abc import Sequence
 from uplink.common import grant
+from uplink.common import macaroon
 from uplink.common.storj import NodeURL
 from uplink.common import rpc
 
 
-def parse_access(access_value):
+def parse_access(access_value: str) -> "Access":
     if not access_value:
         raise ValueError("access is empty or None")
     try:
@@ -16,7 +18,7 @@ def parse_access(access_value):
         raise ValueError(f"access is malformed: {e}")
 
 
-def parse_node_url(address):
+def parse_node_url(address: str) -> NodeURL:
     if not address:
         raise ValueError("node URL is empty or None")
 
@@ -33,30 +35,39 @@ def parse_node_url(address):
 class Access:
     __slots__ = ["_satellite_url", "_api_key", "_enc_access"]
 
-    def __init__(self, satellite_url, api_key, enc_access):
+    def __init__(
+        self,
+        satellite_url: NodeURL,
+        api_key: macaroon.APIKey,
+        enc_access: grant.EncryptionAccess,
+    ) -> None:
         self._satellite_url = satellite_url
         self._api_key = api_key
         self._enc_access = enc_access
 
     @property
-    def satellite_url(self):
+    def satellite_url(self) -> NodeURL:
         return self._satellite_url
 
     @property
-    def api_key(self):
+    def api_key(self) -> macaroon.APIKey:
         return self._api_key
 
     @property
-    def enc_access(self):
+    def enc_access(self) -> grant.EncryptionAccess:
         return self._enc_access
 
-    def share(self, permission, prefixes=[]):
+    def share(
+        self,
+        permission: grant.Permission,
+        prefixes: Sequence[grant.SharePrefix] = [],
+    ) -> "Access":
         return Access._from_internal(self._to_internal().restrict(permission, prefixes))
 
-    def serialize(self):
+    def serialize(self) -> str:
         return self._to_internal().serialize()
 
-    def _to_internal(self):
+    def _to_internal(self) -> grant.Access:
         return grant.Access(
             satellite_address=str(self._satellite_url),
             api_key=self._api_key,
@@ -64,7 +75,7 @@ class Access:
         )
 
     @staticmethod
-    def _from_internal(inner):
+    def _from_internal(inner: grant.Access) -> "Access":
         satellite_url = parse_node_url(inner.satellite_address)
         return Access(
             satellite_url=satellite_url,

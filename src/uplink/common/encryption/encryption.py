@@ -11,7 +11,7 @@ from .secretbox import encrypt_secretbox, decrypt_secretbox
 AESGCM_NONCE_SIZE = 12
 
 
-def to_aesgcm_nonce(nonce):
+def to_aesgcm_nonce(nonce: bytes) -> bytes:
     return bytes(nonce[:AESGCM_NONCE_SIZE])
 
 

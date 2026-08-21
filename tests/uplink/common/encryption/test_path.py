@@ -1,6 +1,7 @@
 # Copyright (C) 2023 Storj Labs, Inc.
 # See LICENSE for copying information.
 
+from collections.abc import Iterable
 import pytest
 import uplink.common.encryption.path as encryption_path
 import itertools
@@ -15,7 +16,6 @@ from uplink.common.encryption import (
     derive_path_key,
 )
 from uplink.common.paths import Unencrypted, Encrypted, Iterator
-from typing import List, Iterable
 
 _ALL_CIPHERS = [
     CipherSuite.ENC_NULL,
@@ -24,11 +24,11 @@ _ALL_CIPHERS = [
 ]
 
 
-def _with_all_ciphers(paths):
+def _with_all_ciphers(paths: list[bytes]) -> Iterable[tuple[CipherSuite, bytes]]:
     return itertools.product(_ALL_CIPHERS, paths)
 
 
-def _new_store(key: Key, path_cipher: CipherSuite):
+def _new_store(key: Key, path_cipher: CipherSuite) -> Store:
     store = Store()
     store.add_with_cipher(b"bucket", Unencrypted(), Encrypted(), key, path_cipher)
     return store
@@ -50,7 +50,7 @@ def _new_store(key: Key, path_cipher: CipherSuite):
         ]
     ),
 )
-def test_store_encryption(path_cipher, raw_path):
+def test_store_encryption(path_cipher: CipherSuite, raw_path: bytes) -> None:
     store = _new_store(Key.generate(), path_cipher)
     path = Unencrypted(raw_path)
 
@@ -78,7 +78,9 @@ def test_store_encryption(path_cipher, raw_path):
         ]
     ),
 )
-def test_store_encryption_bucket_root(path_cipher, raw_path):
+def test_store_encryption_bucket_root(
+    path_cipher: CipherSuite, raw_path: bytes
+) -> None:
     dk = Key.generate()
 
     root_store = Store(dk, path_cipher)
@@ -113,7 +115,9 @@ def test_store_encryption_bucket_root(path_cipher, raw_path):
         ]
     ),
 )
-def test_store_encryption_multiple_bases(path_cipher, raw_path):
+def test_store_encryption_multiple_bases(
+    path_cipher: CipherSuite, raw_path: bytes
+) -> None:
     pb = PathBuilder()
     iter = Iterator(raw_path)
     while not iter.done:
@@ -140,7 +144,7 @@ def test_store_encryption_multiple_bases(path_cipher, raw_path):
         assert root_enc_path == prefix_enc_path
 
 
-def test_decrypt_path_decryption_bypass():
+def test_decrypt_path_decryption_bypass() -> None:
     enc_store = Store(Key.generate(), CipherSuite.ENC_AESGCM)
 
     bucket_name = b"test-bucket"
@@ -185,7 +189,7 @@ def test_decrypt_path_decryption_bypass():
         assert Unencrypted(expected_path) == actual_path
 
 
-def test_encrypt_path_encryption_bypass():
+def test_encrypt_path_encryption_bypass() -> None:
     enc_store = Store(Key.generate(), CipherSuite.ENC_AESGCM)
 
     bucket_name = b"test-bucket"
@@ -230,7 +234,7 @@ def test_encrypt_path_encryption_bypass():
         assert encrypted_path == actual_path
 
 
-def test_segment_encoding():
+def test_segment_encoding() -> None:
     assert encryption_path._encode_segment(b"") == b"\x01"
 
     segments = {

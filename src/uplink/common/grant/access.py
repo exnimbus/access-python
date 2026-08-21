@@ -1,6 +1,9 @@
 # Copyright (C) 2023 Storj Labs, Inc.
 # See LICENSE for copying information.
 
+from __future__ import annotations
+
+from collections.abc import Sequence
 from .encryptionaccess import EncryptionAccess
 from .permission import Permission
 from .shareprefix import SharePrefix
@@ -11,7 +14,6 @@ from uplink.common.storj import Key
 from google.protobuf.duration_pb2 import Duration
 from google.protobuf.timestamp_pb2 import Timestamp
 from datetime import datetime, timedelta
-from typing import List, Optional
 
 
 class Access:
@@ -19,25 +21,25 @@ class Access:
 
     def __init__(
         self, satellite_address: str, api_key: APIKey, enc_access: EncryptionAccess
-    ):
+    ) -> None:
         self._satellite_address = satellite_address
         self._api_key = api_key
         self._enc_access = enc_access
 
     @property
-    def satellite_address(self):
+    def satellite_address(self) -> str:
         return self._satellite_address
 
     @property
-    def api_key(self):
+    def api_key(self) -> APIKey:
         return self._api_key
 
     @property
-    def enc_access(self):
+    def enc_access(self) -> EncryptionAccess:
         return self._enc_access
 
     @staticmethod
-    def parse(access: str):
+    def parse(access: str) -> Access:
         data, version = base58.check_decode(access)
         if version != 0:
             raise ValueError("invalid access grant format")
@@ -58,7 +60,9 @@ class Access:
             enc_access=enc_access,
         )
 
-    def restrict(self, permission: Permission, prefixes: List[SharePrefix] = []):
+    def restrict(
+        self, permission: Permission, prefixes: Sequence[SharePrefix] = []
+    ) -> Access:
         not_before = permission.not_before
         not_after = permission.not_after
 
@@ -110,7 +114,7 @@ class Access:
             enc_access=enc_access,
         )
 
-    def serialize(self):
+    def serialize(self) -> str:
         if len(self.satellite_address) == 0:
             raise Exception("access grant is missing satellite address")
         if self.api_key is None:
@@ -129,7 +133,9 @@ class Access:
         return base58.check_encode(data, 0)
 
 
-def _parse_encryption_access_from_proto(p: encryption_access_pb2.EncryptionAccess):
+def _parse_encryption_access_from_proto(
+    p: encryption_access_pb2.EncryptionAccess,
+) -> EncryptionAccess:
     access = EncryptionAccess()
     if len(p.default_key) > 0:
         if len(p.default_key) != storj.KEY_SIZE:
@@ -157,7 +163,7 @@ def _parse_encryption_access_from_proto(p: encryption_access_pb2.EncryptionAcces
     return access
 
 
-def _opt_timestamp(dt: Optional[datetime]) -> Optional[Timestamp]:
+def _opt_timestamp(dt: datetime | None) -> Timestamp | None:
     if dt is None:
         return None
     ts = Timestamp()
@@ -165,7 +171,7 @@ def _opt_timestamp(dt: Optional[datetime]) -> Optional[Timestamp]:
     return ts
 
 
-def _opt_duration(td: Optional[timedelta]) -> Optional[Duration]:
+def _opt_duration(td: timedelta | None) -> Duration | None:
     if td is None:
         return None
     d = Duration()

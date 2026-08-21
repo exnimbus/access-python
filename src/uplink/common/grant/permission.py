@@ -26,7 +26,7 @@ class Permission:
         not_before: Optional[datetime] = None,
         not_after: Optional[datetime] = None,
         max_object_ttl: Optional[timedelta] = None,
-    ):
+    ) -> None:
         self.allow_delete = allow_delete
         self.allow_list = allow_list
         self.allow_download = allow_download
@@ -36,7 +36,7 @@ class Permission:
         self.max_object_ttl = max_object_ttl
 
     @property
-    def restricted(self):
+    def restricted(self) -> bool:
         return not (
             self.allow_delete
             and self.allow_list
