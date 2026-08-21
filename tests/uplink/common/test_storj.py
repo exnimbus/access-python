@@ -65,10 +65,35 @@ def test_legacy_hostname_only_access() -> None:
     assert str(access.satellite_url.id) == node_id
 
 
-@pytest.mark.parametrize("version", [0, 1])
-def test_node_id_preserves_base58_version(version: int) -> None:
-    encoded = base58.check_encode(bytes(range(31)) + b"\0", version)
+def test_node_id_preserves_registered_base58_version() -> None:
+    encoded = base58.check_encode(bytes(range(31)) + b"\0", 0)
     assert str(node_id_from_string(encoded)) == encoded
+
+
+@pytest.mark.parametrize("version", [1, 255])
+def test_node_id_canonicalizes_unregistered_base58_version(version: int) -> None:
+    node_id = bytes(range(31)) + b"\0"
+    encoded = base58.check_encode(node_id, version)
+    assert str(node_id_from_string(encoded)) == base58.check_encode(node_id, 0)
+
+
+@pytest.mark.parametrize(
+    "value,address",
+    [
+        ("33.20.0.1:7777", "33.20.0.1:7777"),
+        (
+            "[2001:db8:1f70::999:de8:7648:6e8]:7777",
+            "[2001:db8:1f70::999:de8:7648:6e8]:7777",
+        ),
+        ("example.com:7777", "example.com:7777"),
+        (f"{KNOWN_NODES[0][0]}@", ""),
+    ],
+)
+def test_node_url_matches_go_address_cases(value: str, address: str) -> None:
+    node_url = NodeURL.parse(value)
+
+    assert node_url.address == address
+    assert str(node_url) == value
 
 
 def test_node_url_feature_flags() -> None:
