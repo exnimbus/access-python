@@ -100,9 +100,6 @@ class NodeURL:
             node._id = node_id_from_string(u.username)
 
         address = _hostport(u)
-        if address is None:
-            raise ValueError("host cannot be empty")
-
         node._address = address
         node._noise_info = NoiseInfo()
 
@@ -213,13 +210,13 @@ class NodeID:
 
 def node_id_from_string(s: str) -> NodeID:
     try:
-        id_bytes, version_number = base58.check_decode(s)
+        id_bytes, _ = base58.check_decode(s)
         versioned_id = bytearray(id_bytes)
         if len(versioned_id) != NODEID_SIZE:
             raise ValueError(
                 f"not enough bytes to make a node id; have {len(versioned_id)}, need {NODEID_SIZE}"
             )
-        versioned_id[-1] = version_number
+        versioned_id[-1] = 0
         return node_id_from_bytes(bytes(versioned_id))
     except Exception as e:
         raise ValueError(f"invalid node ID: {e}") from e
@@ -229,7 +226,6 @@ def node_id_from_bytes(v: bytes) -> NodeID:
     return NodeID(v)
 
 
-def _hostport(u: ParseResult) -> str | None:
-    if u.port is None:
-        return u.hostname
-    return f"{u.hostname}:{u.port}"
+def _hostport(u: ParseResult) -> str:
+    _ = u.port
+    return u.netloc.rpartition("@")[2]
