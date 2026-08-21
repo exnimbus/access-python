@@ -2,11 +2,11 @@
 # See LICENSE for copying information.
 
 import pytest
-from uplink.common import macaroon
+from uplink.common import encryption, macaroon
 from uplink.common.macaroon import new_api_key
 from uplink.common.grant import EncryptionAccess
 from uplink.common.storj import CipherSuite, Key
-from uplink.common.paths import Encrypted
+from uplink.common.paths import Encrypted, Unencrypted
 from typing import List
 
 
@@ -87,3 +87,70 @@ def test_limit_to(groups, valid, invalid):
         bucket, path = split(invalid)
         _, _, base = enc_access.store.lookup_encrypted(bucket, Encrypted(path))
         assert base is None
+
+
+def test_limit_to_fails_closed_for_malformed_caveat():
+    api_key = new_api_key(bytes())
+    api_key.mac.caveats.append(b"\xff")
+    enc_access = EncryptionAccess(Key.newzero())
+    enc_access.store.add_with_cipher(
+        b"bucket",
+        Unencrypted(b"stored"),
+        Encrypted(b"stored"),
+        Key.newzero(),
+        CipherSuite.ENC_NULL,
+    )
+
+    enc_access.limit_to(api_key)
+
+    entries = []
+    enc_access.store.iterate_with_cipher(lambda *entry: entries.append(entry))
+    assert enc_access.default_key is None
+    assert entries == []
+
+
+def test_limit_to_preserves_unrestricted_store():
+    enc_access = EncryptionAccess(Key.newzero())
+    store = enc_access.store
+
+    enc_access.limit_to(new_api_key(bytes()))
+
+    assert enc_access.store is store
+    assert enc_access.default_key == Key.newzero()
+
+
+def test_limit_to_preserves_cipher_for_valid_restrictions():
+    enc_access = EncryptionAccess(Key.newzero())
+    enc_access.default_path_cipher = CipherSuite.ENC_AESGCM
+    encrypted = encryption.encrypt_path_with_store_cipher(
+        b"bucket", Unencrypted(b"valid"), enc_access.store
+    )
+    caveat = macaroon.Caveat()
+    path = caveat.allowed_paths.add()
+    path.bucket = b"bucket"
+    path.encrypted_path_prefix = encrypted.raw
+
+    enc_access.limit_to(new_api_key(bytes()).restrict(caveat))
+
+    assert enc_access.default_path_cipher == CipherSuite.ENC_AESGCM
+    assert enc_access.store.lookup_encrypted(b"bucket", encrypted)[2] is not None
+
+
+def test_limit_to_skips_unusable_prefix():
+    enc_access = EncryptionAccess(Key.newzero())
+    enc_access.default_path_cipher = CipherSuite.ENC_AESGCM
+    encrypted = encryption.encrypt_path_with_store_cipher(
+        b"bucket", Unencrypted(b"valid"), enc_access.store
+    )
+    caveat = macaroon.Caveat()
+    for prefix in (b"invalid", encrypted.raw):
+        path = caveat.allowed_paths.add()
+        path.bucket = b"bucket"
+        path.encrypted_path_prefix = prefix
+
+    enc_access.limit_to(new_api_key(bytes()).restrict(caveat))
+
+    assert (
+        enc_access.store.lookup_encrypted(b"bucket", Encrypted(b"invalid"))[2] is None
+    )
+    assert enc_access.store.lookup_encrypted(b"bucket", encrypted)[2] is not None

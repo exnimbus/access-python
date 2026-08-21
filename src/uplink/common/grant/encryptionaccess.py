@@ -46,13 +46,10 @@ class EncryptionAccess:
         self._store.default_path_cipher = default_path_cipher
 
     def limit_to(self, api_key: APIKey):
-        # TODO: Go code is robust in that it replaces the store with an
-        # empty one on error. For now we'll just thrown an exception but we
-        # might want to consider that later.
-        # try:
-        self._store = self.__maybe_limit_to(api_key)
-        # except Exception as e:
-        #    self._store = Store()
+        try:
+            self._store = self.__maybe_limit_to(api_key)
+        except Exception:
+            self._store = Store()
 
     def __maybe_limit_to(self, api_key: APIKey):
         # TODO: storj/common does a clone of the macaroon here but "bytes" are
