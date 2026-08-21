@@ -17,7 +17,7 @@ import pytest
 
 from uplink.common import macaroon, storj
 from uplink.common.grant import Access, EncryptionAccess, Permission
-from uplink.common.macaroon import Action, ActionType, UnauthorizedError
+from uplink.common.macaroon import APIKeyVersion, Action, ActionType, UnauthorizedError
 from uplink.common.storj import CipherSuite
 
 
@@ -122,7 +122,28 @@ def last_caveat(access: Access) -> macaroon.Caveat:
 
 def allows(secret: bytes, access: Access, op: ActionType) -> bool:
     try:
-        access.api_key.check(secret, action(op))
+        version = (
+            APIKeyVersion.EVENTING
+            if op
+            in {
+                ActionType.ACTION_PUT_BUCKET_NOTIFICATION_CONFIGURATION,
+                ActionType.ACTION_GET_BUCKET_NOTIFICATION_CONFIGURATION,
+            }
+            else APIKeyVersion.OBJECT_LOCK
+            if op
+            in {
+                ActionType.ACTION_LOCK,
+                ActionType.ACTION_PUT_OBJECT_RETENTION,
+                ActionType.ACTION_GET_OBJECT_RETENTION,
+                ActionType.ACTION_PUT_OBJECT_LEGAL_HOLD,
+                ActionType.ACTION_GET_OBJECT_LEGAL_HOLD,
+                ActionType.ACTION_BYPASS_GOVERNANCE_RETENTION,
+                ActionType.ACTION_PUT_BUCKET_OBJECT_LOCK_CONFIGURATION,
+                ActionType.ACTION_GET_BUCKET_OBJECT_LOCK_CONFIGURATION,
+            }
+            else APIKeyVersion.MIN
+        )
+        access.api_key.check(secret, action(op), version=version)
     except UnauthorizedError:
         return False
     return True
@@ -303,4 +324,6 @@ def test_grants_without_the_new_fields_keep_working() -> None:
         restricted_key.check(secret, action(ActionType.ACTION_WRITE))
 
     # Absent bits keep their historical meaning rather than failing closed.
-    restricted_key.check(secret, action(ActionType.ACTION_LOCK))
+    restricted_key.check(
+        secret, action(ActionType.ACTION_LOCK), version=APIKeyVersion.OBJECT_LOCK
+    )
