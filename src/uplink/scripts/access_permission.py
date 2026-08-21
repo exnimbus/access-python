@@ -15,10 +15,12 @@ def access_permission_options(function):
         help="The object is automatically deleted after this period",
     )(function)
     function = click.option(
-        "--not-after", type=HumanDateNotAfter(), help="Disallow writes with the access"
+        "--not-after", type=HumanDateNotAfter(), help="Disallow access after this time"
     )(function)
     function = click.option(
-        "--not-before", type=HumanDateNotBefore(), help="Disallow reads with the access"
+        "--not-before",
+        type=HumanDateNotBefore(),
+        help="Disallow access before this time",
     )(function)
     function = click.option(
         "--disallow-writes", type=click.BOOL, help="Disallow writes with the access"
@@ -117,7 +119,7 @@ class AccessPermission:
 
     @property
     def allow_upload(self):
-        return not (self._disallow_deletes or self._readonly)
+        return not (self._disallow_writes or self._readonly)
 
     @property
     def max_object_ttl(self):
@@ -134,7 +136,13 @@ class AccessPermission:
             max_object_ttl=self.max_object_ttl,
         )
 
-        if not permission.restricted and len(self.prefixes) == 0:
+        if (
+            not permission.restricted
+            and len(self.prefixes) == 0
+            and self.not_before is None
+            and self.not_after is None
+            and self.max_object_ttl is None
+        ):
             return access
 
         return access.share(permission, self.prefixes)
