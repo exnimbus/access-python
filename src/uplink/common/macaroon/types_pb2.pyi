@@ -48,6 +48,16 @@ class Caveat(google.protobuf.message.Message):
     DISALLOW_WRITES_FIELD_NUMBER: builtins.int
     DISALLOW_LISTS_FIELD_NUMBER: builtins.int
     DISALLOW_DELETES_FIELD_NUMBER: builtins.int
+    DISALLOW_LOCKS_FIELD_NUMBER: builtins.int
+    DISALLOW_PUT_RETENTION_FIELD_NUMBER: builtins.int
+    DISALLOW_GET_RETENTION_FIELD_NUMBER: builtins.int
+    DISALLOW_PUT_LEGAL_HOLD_FIELD_NUMBER: builtins.int
+    DISALLOW_GET_LEGAL_HOLD_FIELD_NUMBER: builtins.int
+    DISALLOW_BYPASS_GOVERNANCE_RETENTION_FIELD_NUMBER: builtins.int
+    DISALLOW_PUT_BUCKET_OBJECT_LOCK_CONFIGURATION_FIELD_NUMBER: builtins.int
+    DISALLOW_GET_BUCKET_OBJECT_LOCK_CONFIGURATION_FIELD_NUMBER: builtins.int
+    DISALLOW_PUT_BUCKET_NOTIFICATION_CONFIGURATION_FIELD_NUMBER: builtins.int
+    DISALLOW_GET_BUCKET_NOTIFICATION_CONFIGURATION_FIELD_NUMBER: builtins.int
     ALLOWED_PATHS_FIELD_NUMBER: builtins.int
     NOT_AFTER_FIELD_NUMBER: builtins.int
     NOT_BEFORE_FIELD_NUMBER: builtins.int
@@ -58,6 +68,17 @@ class Caveat(google.protobuf.message.Message):
     disallow_writes: builtins.bool
     disallow_lists: builtins.bool
     disallow_deletes: builtins.bool
+    disallow_locks: builtins.bool
+    disallow_put_retention: builtins.bool
+    disallow_get_retention: builtins.bool
+    disallow_put_legal_hold: builtins.bool
+    disallow_get_legal_hold: builtins.bool
+    disallow_bypass_governance_retention: builtins.bool
+    """NOTE: field 10 is allowed_paths, declared below."""
+    disallow_put_bucket_object_lock_configuration: builtins.bool
+    disallow_get_bucket_object_lock_configuration: builtins.bool
+    disallow_put_bucket_notification_configuration: builtins.bool
+    disallow_get_bucket_notification_configuration: builtins.bool
     @property
     def allowed_paths(self) -> google.protobuf.internal.containers.RepeatedCompositeFieldContainer[global___Caveat.Path]: ...
     @property
@@ -79,6 +100,16 @@ class Caveat(google.protobuf.message.Message):
         disallow_writes: builtins.bool = ...,
         disallow_lists: builtins.bool = ...,
         disallow_deletes: builtins.bool = ...,
+        disallow_locks: builtins.bool = ...,
+        disallow_put_retention: builtins.bool = ...,
+        disallow_get_retention: builtins.bool = ...,
+        disallow_put_legal_hold: builtins.bool = ...,
+        disallow_get_legal_hold: builtins.bool = ...,
+        disallow_bypass_governance_retention: builtins.bool = ...,
+        disallow_put_bucket_object_lock_configuration: builtins.bool = ...,
+        disallow_get_bucket_object_lock_configuration: builtins.bool = ...,
+        disallow_put_bucket_notification_configuration: builtins.bool = ...,
+        disallow_get_bucket_notification_configuration: builtins.bool = ...,
         allowed_paths: collections.abc.Iterable[global___Caveat.Path] | None = ...,
         not_after: google.protobuf.timestamp_pb2.Timestamp | None = ...,
         not_before: google.protobuf.timestamp_pb2.Timestamp | None = ...,
@@ -86,6 +117,6 @@ class Caveat(google.protobuf.message.Message):
         nonce: builtins.bytes = ...,
     ) -> None: ...
     def HasField(self, field_name: typing_extensions.Literal["max_object_ttl", b"max_object_ttl", "not_after", b"not_after", "not_before", b"not_before"]) -> builtins.bool: ...
-    def ClearField(self, field_name: typing_extensions.Literal["allowed_paths", b"allowed_paths", "disallow_deletes", b"disallow_deletes", "disallow_lists", b"disallow_lists", "disallow_reads", b"disallow_reads", "disallow_writes", b"disallow_writes", "max_object_ttl", b"max_object_ttl", "nonce", b"nonce", "not_after", b"not_after", "not_before", b"not_before"]) -> None: ...
+    def ClearField(self, field_name: typing_extensions.Literal["allowed_paths", b"allowed_paths", "disallow_bypass_governance_retention", b"disallow_bypass_governance_retention", "disallow_deletes", b"disallow_deletes", "disallow_get_bucket_notification_configuration", b"disallow_get_bucket_notification_configuration", "disallow_get_bucket_object_lock_configuration", b"disallow_get_bucket_object_lock_configuration", "disallow_get_legal_hold", b"disallow_get_legal_hold", "disallow_get_retention", b"disallow_get_retention", "disallow_lists", b"disallow_lists", "disallow_locks", b"disallow_locks", "disallow_put_bucket_notification_configuration", b"disallow_put_bucket_notification_configuration", "disallow_put_bucket_object_lock_configuration", b"disallow_put_bucket_object_lock_configuration", "disallow_put_legal_hold", b"disallow_put_legal_hold", "disallow_put_retention", b"disallow_put_retention", "disallow_reads", b"disallow_reads", "disallow_writes", b"disallow_writes", "max_object_ttl", b"max_object_ttl", "nonce", b"nonce", "not_after", b"not_after", "not_before", b"not_before"]) -> None: ...
 
 global___Caveat = Caveat
