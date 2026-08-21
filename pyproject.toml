@@ -14,6 +14,9 @@ dependencies = [
     "protobuf >= 4.25",
     "pycryptodome",
     "pynacl",
+    "argon2-cffi",
+    "cryptography",
+    "pyOpenSSL",
 ]
 classifiers = [
     "License :: OSI Approved :: MIT License",

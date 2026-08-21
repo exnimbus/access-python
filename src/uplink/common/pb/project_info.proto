@@ -1,0 +1,16 @@
+syntax = "proto3";
+
+package metainfo;
+
+message RequestHeader {
+    bytes api_key = 1;
+    bytes user_agent = 2;
+}
+
+message ProjectInfoRequest {
+    RequestHeader header = 15;
+}
+
+message ProjectInfoResponse {
+    bytes project_salt = 1;
+}
