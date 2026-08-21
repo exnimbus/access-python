@@ -91,7 +91,7 @@ def _encrypt_path_component(comp: bytes, cipher: CipherSuite, key: Key) -> bytes
     segment = bytearray(nonce)
     segment.extend(cipher_text)
 
-    return _encode_segment(segment)
+    return _encode_segment(bytes(segment))
 
 
 def _encode_segment(segment: bytes | bytearray) -> bytes:

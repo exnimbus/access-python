@@ -56,12 +56,12 @@ class CipherSuite(IntEnum):
 class NoiseInfo:
     __slots__ = ["_public_key", "_proto"]
 
-    def __init__(self, public_key: str | None = None, proto: int = 0) -> None:
+    def __init__(self, public_key: bytes | None = None, proto: int = 0) -> None:
         self._public_key = public_key
         self._proto = proto
 
     @property
-    def public_key(self) -> str | None:
+    def public_key(self) -> bytes | None:
         return self._public_key
 
     @property
@@ -108,14 +108,28 @@ class NodeURL:
 
         query = parse_qs(u.query)
         if "noise_pub" in query:
-            pubkey, _ = base58.check_decode(query["noise_pub"][0])
-            node._noise_info._public_key = pubkey.decode()
+            try:
+                pubkey, _ = base58.check_decode(query["noise_pub"][0])
+                node._noise_info._public_key = pubkey
+            except Exception as e:
+                raise ValueError(f"invalid noise_pub: {e}") from e
         if "noise_proto" in query:
-            node._noise_info._proto = int(query["noise_proto"][0], 10)
+            try:
+                node._noise_info._proto = int(query["noise_proto"][0], 10)
+            except ValueError as e:
+                raise ValueError(f"invalid noise_proto: {e}") from e
         if "debounce" in query:
-            node._debounce_limit = int(query["debounce"][0], 10)
+            try:
+                node._debounce_limit = int(query["debounce"][0], 10)
+            except ValueError as e:
+                raise ValueError(f"invalid debounce: {e}") from e
         if "f" in query:
-            node._features = int(query["f"][0], 16)
+            try:
+                node._features = int(query["f"][0], 16)
+                if not 0 <= node._features <= 0xFFFFFFFFFFFFFFFF:
+                    raise ValueError("value must be an unsigned 64-bit integer")
+            except ValueError as e:
+                raise ValueError(f"invalid f: {e}") from e
 
         return node
 
@@ -163,7 +177,7 @@ class NodeURL:
             write_key("debounce=", f"{self.debounce_limit}")
 
         if self.features > 0:
-            write_key("debounce=", f"{self.features:x}")
+            write_key("f=", f"{self.features:x}")
 
         if self.noise_info.proto > 0:
             write_key("noise_proto=", f"{self.noise_info.proto:d}")
@@ -171,7 +185,7 @@ class NodeURL:
         if self.noise_info.public_key is not None:
             write_key(
                 "noise_pub=",
-                base58.check_encode(self.noise_info.public_key.encode(), 0),
+                base58.check_encode(self.noise_info.public_key, 0),
             )
 
         return out.getvalue()
@@ -189,20 +203,26 @@ class NodeID:
 
     def __str__(self) -> str:
         unversioned = self.unversioned()
-        # TODO: support versions
-        return base58.check_encode(unversioned._id, 0)
+        return base58.check_encode(unversioned._id, self._id[-1])
 
     def unversioned(self: NodeID) -> NodeID:
         unversioned = bytearray(self._id)
         unversioned[-1] = 0
-        return NodeID(unversioned)
+        return NodeID(bytes(unversioned))
 
 
 def node_id_from_string(s: str) -> NodeID:
-    id_bytes, version_number = base58.check_decode(s)
-    unversioned_id = node_id_from_bytes(id_bytes)
-    # TODO: support versions
-    return unversioned_id
+    try:
+        id_bytes, version_number = base58.check_decode(s)
+        versioned_id = bytearray(id_bytes)
+        if len(versioned_id) != NODEID_SIZE:
+            raise ValueError(
+                f"not enough bytes to make a node id; have {len(versioned_id)}, need {NODEID_SIZE}"
+            )
+        versioned_id[-1] = version_number
+        return node_id_from_bytes(bytes(versioned_id))
+    except Exception as e:
+        raise ValueError(f"invalid node ID: {e}") from e
 
 
 def node_id_from_bytes(v: bytes) -> NodeID:
