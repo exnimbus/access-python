@@ -15,6 +15,7 @@ from uplink.common.encryption import (
     decrypt_path_with_store_cipher,
     derive_path_key,
 )
+from uplink.common.encryption.aesgcm import decrypt_aesgcm, encrypt_aesgcm
 from uplink.common.paths import Unencrypted, Encrypted, Iterator
 
 _ALL_CIPHERS = [
@@ -60,6 +61,18 @@ def test_store_encryption(path_cipher: CipherSuite, raw_path: bytes) -> None:
 
     dec_path = decrypt_path_with_store_cipher(b"bucket", enc_path, store)
     assert raw_path == dec_path.raw
+
+
+def test_aesgcm_authentication() -> None:
+    encrypted = encrypt_aesgcm(b"path", bytes(range(32)), bytes(range(12)))
+
+    assert decrypt_aesgcm(encrypted, bytes(range(32)), bytes(range(12))) == b"path"
+    with pytest.raises(ValueError):
+        decrypt_aesgcm(
+            encrypted[:-1] + bytes([encrypted[-1] ^ 1]),
+            bytes(range(32)),
+            bytes(range(12)),
+        )
 
 
 @pytest.mark.parametrize(
