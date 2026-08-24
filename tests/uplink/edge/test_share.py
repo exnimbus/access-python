@@ -26,6 +26,13 @@ ACCESS_KEY_ID = "aaaaaaaaaaaaaaaaaaaaaaaaaaaa"
             f"https://linksharing.test/s/{ACCESS_KEY_ID}/mybucket",
         ),
         (
+            "https://linksharing.test/?q=%zz",
+            "",
+            "",
+            None,
+            f"https://linksharing.test/s/{ACCESS_KEY_ID}?q=%zz",
+        ),
+        (
             "https://linksharing.test/base%2Fpath/",
             "mybucket",
             "my/prefix/",

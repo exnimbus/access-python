@@ -39,7 +39,7 @@ def join_share_url(
     if (
         not parsed.scheme
         or not parsed.netloc
-        or search(r"%(?![0-9A-Fa-f]{2})", base_url)
+        or search(r"%(?![0-9A-Fa-f]{2})", parsed.path)
     ):
         raise ValueError(f"invalid base URL: {base_url!r}")
 
