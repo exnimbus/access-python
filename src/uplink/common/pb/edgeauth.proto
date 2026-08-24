@@ -1,0 +1,22 @@
+// Copyright (C) 2026 Storj Labs, Inc.
+// See LICENSE for copying information.
+
+syntax = "proto3";
+
+import "google/protobuf/timestamp.proto";
+
+service EdgeAuth {
+  rpc RegisterAccess(EdgeRegisterAccessRequest) returns (EdgeRegisterAccessResponse);
+}
+
+message EdgeRegisterAccessRequest {
+  string access_grant = 1;
+  bool public = 2;
+}
+
+message EdgeRegisterAccessResponse {
+  string access_key_id = 1;
+  string secret_key = 2;
+  string endpoint = 3;
+  google.protobuf.Timestamp free_tier_restricted_expiration = 4;
+}

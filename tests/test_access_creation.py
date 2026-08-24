@@ -7,7 +7,7 @@ import pytest
 
 import uplink
 import uplink.access as access_module
-from uplink.common import base58, encryption, grant, macaroon, metainfo
+from uplink.common import base58, drpc, encryption, grant, macaroon, metainfo
 from uplink.common.paths import Unencrypted
 from uplink.common.storj import CipherSuite, Key, NodeURL, node_id_from_bytes
 
@@ -192,30 +192,32 @@ class _Connection:
 def test_drpc_response_reassembles_and_rejects_bad_order() -> None:
     response = b"abc"
     conn = _Connection(
-        metainfo._frame(2, 1, 1, response[:1], False)
-        + metainfo._frame(2, 1, 1, response[1:])
+        drpc._frame(2, 1, 1, response[:1], False) + drpc._frame(2, 1, 1, response[1:])
     )
-    assert metainfo._read_response(conn) == response
+    assert drpc._read_response(conn) == response
     with pytest.raises(ConnectionError):
-        metainfo._read_response(_Connection(metainfo._frame(1, 1, 0, b"bad")))
+        drpc._read_response(_Connection(drpc._frame(1, 1, 0, b"bad")))
 
 
 def test_drpc_request_wire_and_errors() -> None:
-    conn = _Connection(b"")
+    conn = _Connection(drpc._frame(2, 1, 1, b""))
     request = metainfo.project_info_pb2.ProjectInfoRequest()
     request.header.api_key = b"key"
     request.header.user_agent = b"agent"
-    metainfo._send_request(conn, request.SerializeToString())
+    assert (
+        drpc.invoke(conn, "/metainfo.Metainfo/ProjectInfo", request.SerializeToString())
+        == b""
+    )
     assert conn.sent == (
         b"\x03\x01\x00\x1e/metainfo.Metainfo/ProjectInfo"
         b"\x05\x01\x01\x0e\x7a\x0c\x0a\x03key\x12\x05agent"
         b"\x0d\x01\x02\x00"
     )
-    with pytest.raises(ConnectionError, match="denied"):
-        metainfo._read_response(_Connection(metainfo._frame(3, 1, 1, b"denied")))
+    with pytest.raises(drpc.RemoteError, match="denied"):
+        drpc._read_response(_Connection(drpc._frame(3, 1, 1, b"denied")))
     with pytest.raises(ConnectionError, match="4 MiB"):
-        metainfo._read_response(
-            _Connection(metainfo._frame(2, 1, 1, b"x" * (4 * 1024 * 1024 + 1)))
+        drpc._read_response(
+            _Connection(drpc._frame(2, 1, 1, b"x" * (4 * 1024 * 1024 + 1)))
         )
 
 
@@ -243,7 +245,7 @@ def test_project_salt_rejects_missing_or_malformed_response(
         return _Raw()
 
     def tls(_raw: object) -> _TLS:
-        return _TLS(metainfo._frame(2, 1, 1, payload))
+        return _TLS(drpc._frame(2, 1, 1, payload))
 
     def verify(_conn: Any, _node: NodeURL) -> None:
         pass
