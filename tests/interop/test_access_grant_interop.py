@@ -140,9 +140,9 @@ def _assert_common(access: Access) -> None:
     assert access.enc_access.default_path_cipher == CipherSuite.ENC_AESGCM
 
 
-def test_go_fixtures() -> None:
-    values = _read_fixture("go.txt")
-    assert values == _read_fixture("python.txt")
+def test_access_grant_fixtures() -> None:
+    values = _read_fixture("access_grants.txt")
+    assert values == _fixtures()
 
     unrestricted = Access.parse(values["unrestricted"])
     _assert_common(unrestricted)
@@ -184,10 +184,12 @@ def test_go_fixtures() -> None:
 
 
 @pytest.mark.skipif(shutil.which("go") is None, reason="Go is not installed")
-def test_go_verifies_python_fixtures() -> None:
+def test_go_verifies_access_grant_fixtures() -> None:
     subprocess.run(["go", "run", ".", "verify"], cwd=HERE, check=True)
 
 
 if __name__ == "__main__":
-    _write_fixture("python.txt", _fixtures())
+    values = _fixtures()
+    _write_fixture("access_grants.txt", values)
     subprocess.run(["go", "run", ".", "generate"], cwd=HERE, check=True)
+    assert _read_fixture("access_grants.txt") == values

@@ -77,11 +77,11 @@ func generate() error {
 	if err != nil {
 		return err
 	}
-	return os.WriteFile(filepath.Join("fixtures", "go.txt"), []byte("unrestricted="+u+"\nrestricted="+r+"\n"), 0644)
+	return os.WriteFile(filepath.Join("fixtures", "access_grants.txt"), []byte("unrestricted="+u+"\nrestricted="+r+"\n"), 0644)
 }
 
 func verify() error {
-	values, err := readFixtures(filepath.Join("fixtures", "python.txt"))
+	values, err := readFixtures(filepath.Join("fixtures", "access_grants.txt"))
 	if err != nil {
 		return err
 	}
