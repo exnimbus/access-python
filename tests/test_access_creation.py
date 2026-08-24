@@ -20,6 +20,17 @@ def _satellite() -> str:
     return base58.check_encode(bytes(32), 0) + "@satellite.test:7777"
 
 
+def _access() -> tuple[uplink.Access, grant.EncryptionAccess]:
+    enc_access = grant.EncryptionAccess(Key.newzero())
+    enc_access.default_path_cipher = CipherSuite.ENC_AESGCM
+    return (
+        uplink.Access(
+            NodeURL.parse(_satellite()), macaroon.new_api_key(b"secret"), enc_access
+        ),
+        enc_access,
+    )
+
+
 def test_derive_root_key_matches_go_vector() -> None:
     assert bytes(
         access_module._derive_root_key("correct horse battery staple", bytes(range(16)))
@@ -46,9 +57,52 @@ def test_request_access_config_and_module(monkeypatch: pytest.MonkeyPatch) -> No
     assert result.enc_access.default_key == Key.newzero()
     assert result.enc_access.default_path_cipher == CipherSuite.ENC_AESGCM
     assert calls[0][1:] == ("agent", 3.0)
+    disabled = uplink.Config(
+        disable_object_key_encryption=True
+    ).request_access_with_passphrase(_satellite(), _api_key(), "")
+    assert disabled.enc_access.default_key == Key.newzero()
+    assert disabled.enc_access.default_path_cipher == CipherSuite.ENC_NULL
     assert uplink.request_access_with_passphrase(
         _satellite(), _api_key(), ""
     ).serialize()
+
+
+def test_override_encryption_key() -> None:
+    access, enc_access = _access()
+    override = Key(b"override".ljust(Key.SIZE, b"\0"))
+    expected = encryption.encrypt_path_with_store_cipher(
+        b"bucket", Unencrypted(b"tenant/"), enc_access.store
+    )
+
+    access.override_encryption_key(b"bucket", b"tenant//", override)
+
+    _, _, base = enc_access.store.lookup_unencrypted(b"bucket", Unencrypted(b"tenant/"))
+    assert base is not None
+    assert base.unencrypted == Unencrypted(b"tenant/")
+    assert base.encrypted == expected
+    assert base.key == override
+
+
+@pytest.mark.parametrize("prefix", [b"", b"tenant"])
+def test_override_encryption_key_rejects_invalid_prefix(prefix: bytes) -> None:
+    access, _ = _access()
+
+    with pytest.raises(ValueError, match="prefix must end with slash"):
+        access.override_encryption_key(b"bucket", prefix, Key.generate())
+
+
+def test_override_encryption_key_preserves_store_on_conflict() -> None:
+    access, enc_access = _access()
+    encrypted = encryption.encrypt_path_with_store_cipher(
+        b"bucket", Unencrypted(b"tenant"), enc_access.store
+    )
+    enc_access.store.add(b"bucket", Unencrypted(b"other"), encrypted, Key.generate())
+    before = access.serialize()
+
+    with pytest.raises(ValueError, match="conflicting"):
+        access.override_encryption_key(b"bucket", b"tenant/", Key.generate())
+
+    assert access.serialize() == before
 
 
 def test_request_access_restricted_key_limits_encryption(
