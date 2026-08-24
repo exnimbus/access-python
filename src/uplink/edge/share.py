@@ -1,6 +1,7 @@
 # Copyright (C) 2023 Storj Labs, Inc.
 # See LICENSE for copying information.
 
+from re import search
 from typing import Optional
 from urllib.parse import quote, urlsplit, urlunsplit
 
@@ -35,7 +36,11 @@ def join_share_url(
         parsed = urlsplit(base_url)
     except ValueError:
         raise ValueError(f"invalid base URL: {base_url!r}") from None
-    if not parsed.scheme or not parsed.netloc:
+    if (
+        not parsed.scheme
+        or not parsed.netloc
+        or search(r"%(?![0-9A-Fa-f]{2})", base_url)
+    ):
         raise ValueError(f"invalid base URL: {base_url!r}")
 
     parts = ["raw" if options.raw else "s", quote(access_key_id, safe="")]

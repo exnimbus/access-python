@@ -26,11 +26,11 @@ ACCESS_KEY_ID = "aaaaaaaaaaaaaaaaaaaaaaaaaaaa"
             f"https://linksharing.test/s/{ACCESS_KEY_ID}/mybucket",
         ),
         (
-            "https://linksharing.test/base/path/",
+            "https://linksharing.test/base%2Fpath/",
             "mybucket",
             "my/prefix/",
             None,
-            f"https://linksharing.test/base/path/s/{ACCESS_KEY_ID}/mybucket/my/prefix/",
+            f"https://linksharing.test/base%2Fpath/s/{ACCESS_KEY_ID}/mybucket/my/prefix/",
         ),
         (
             "https://linksharing.test",
@@ -62,6 +62,14 @@ def test_join_share_url(
     "base_url,access_key_id,bucket,key,options,error",
     [
         ("", ACCESS_KEY_ID, "", "", None, "invalid base URL"),
+        (
+            "https://linksharing.test/%zz",
+            ACCESS_KEY_ID,
+            "",
+            "",
+            None,
+            "invalid base URL",
+        ),
         (
             "linksharing.test",
             ACCESS_KEY_ID,
