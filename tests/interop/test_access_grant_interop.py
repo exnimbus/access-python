@@ -23,14 +23,6 @@ NOT_BEFORE = datetime(2025, 1, 2, 3, 4, 5, tzinfo=timezone.utc)
 NOT_AFTER = datetime(2025, 1, 2, 5, 4, 5, tzinfo=timezone.utc)
 TTL = timedelta(minutes=90)
 PREFIXES = ((b"bucket-alpha", b"photos/2024"), (b"bucket-beta", b"docs"))
-GO_ENCRYPTED_PATHS = (
-    bytes.fromhex(
-        "023f0edbc905d3955e0ba4fb91950907b6dedef3a01bdff582a2a7d49d941fdd"
-        "f4876a2f02ddf1d15bb5c87e97b0b5eaad68696657439520ad2b66dfbf3776ea"
-        "050101667e9d"
-    ),
-    bytes.fromhex("02fb77ee96f357d93599f523cbf9d43b4f3eb5e397863676e0d62d1e20a925cfeb"),
-)
 
 
 def _unrestricted() -> Access:
@@ -113,10 +105,13 @@ def _canonical(encoded: str) -> str:
 def _expected_entries() -> list[tuple[bytes, bytes, bytes, bytes, CipherSuite]]:
     store = _unrestricted().enc_access.store
     result: list[tuple[bytes, bytes, bytes, bytes, CipherSuite]] = []
-    for (bucket, raw_path), encrypted in zip(PREFIXES, GO_ENCRYPTED_PATHS, strict=True):
+    for bucket, raw_path in PREFIXES:
         path = paths.Unencrypted(raw_path)
+        encrypted = encryption.encrypt_path_with_store_cipher(bucket, path, store)
         key = encryption.derive_path_key(bucket, path, store)
-        result.append((bucket, raw_path, encrypted, bytes(key), CipherSuite.ENC_AESGCM))
+        result.append(
+            (bucket, raw_path, encrypted.raw, bytes(key), CipherSuite.ENC_AESGCM)
+        )
     return sorted(result)
 
 
@@ -147,6 +142,7 @@ def _assert_common(access: Access) -> None:
 
 def test_go_fixtures() -> None:
     values = _read_fixture("go.txt")
+    assert values == _read_fixture("python.txt")
 
     unrestricted = Access.parse(values["unrestricted"])
     _assert_common(unrestricted)
@@ -159,7 +155,7 @@ def test_go_fixtures() -> None:
     _assert_common(restricted)
     assert restricted.enc_access.default_key is None
     assert _store_entries(restricted) == _expected_entries()
-    assert _canonical(restricted.serialize()) == _canonical(values["restricted"])
+    assert restricted.serialize() == values["restricted"]
 
     assert len(restricted.api_key.mac.caveats) == 1
     caveat = macaroon.Caveat()

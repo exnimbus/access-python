@@ -34,10 +34,6 @@ var (
 		{Bucket: "bucket-alpha", Prefix: "photos/2024"},
 		{Bucket: "bucket-beta", Prefix: "docs"},
 	}
-	pythonEncryptedPaths = []string{
-		string([]byte{0x02, 0x3f, 0x0e, 0xdb, 0xc9, 0x05, 0xd3, 0x95, 0x5e, 0x0b, 0xa4, 0xfb, 0x91, 0x95, 0x09, 0x07, 0xb6, 0xde, 0xde, 0x2f, 0x02, 0xdd, 0xf1, 0xd1, 0x5b, 0xb5, 0xc8, 0x7e, 0x97, 0xb0, 0xb5, 0xea, 0xad, 0x68, 0x69, 0x66, 0x57}),
-		string([]byte{0x02, 0xfb, 0x77, 0xee, 0x96, 0xf3, 0x57, 0xd9, 0x35, 0x99, 0xf5, 0x23, 0xcb, 0xf9, 0xd4, 0x3b, 0x4f}),
-	}
 )
 
 type storeEntry struct {
@@ -178,10 +174,10 @@ func verifyAccess(name, encoded string) error {
 	if err := caveat.UnmarshalBinary(mac.Caveats()[0]); err != nil {
 		return err
 	}
-	if err := checkCaveat(&caveat, pythonEncryptedPaths); err != nil {
+	if err := checkCaveat(&caveat); err != nil {
 		return err
 	}
-	expected, err := expectedEntries(pythonEncryptedPaths)
+	expected, err := expectedEntries()
 	if err != nil {
 		return err
 	}
@@ -202,7 +198,7 @@ func verifyAccess(name, encoded string) error {
 	return checkSignature(access, expected)
 }
 
-func checkCaveat(c *macaroon.Caveat, encryptedPaths []string) error {
+func checkCaveat(c *macaroon.Caveat) error {
 	if c.DisallowReads || !c.DisallowWrites || c.DisallowLists || !c.DisallowDeletes ||
 		!c.DisallowLocks || c.DisallowPutRetention || !c.DisallowGetRetention ||
 		!c.DisallowPutLegalHold || c.DisallowGetLegalHold || c.DisallowBypassGovernanceRetention ||
@@ -212,7 +208,7 @@ func checkCaveat(c *macaroon.Caveat, encryptedPaths []string) error {
 		c.MaxObjectTtl == nil || *c.MaxObjectTtl != ttl || !bytes.Equal(c.Nonce, nonce) || len(c.AllowedPaths) != len(prefixes) {
 		return fmt.Errorf("unexpected caveat")
 	}
-	expected, err := expectedEntries(encryptedPaths)
+	expected, err := expectedEntries()
 	if err != nil {
 		return err
 	}
@@ -235,7 +231,7 @@ func checkSignature(access *grant.Access, entries []storeEntry) error {
 		macaroon.Action{Op: macaroon.ActionRead, Bucket: bucket, EncryptedPath: path, Time: notBefore.Add(time.Minute)}, nil)
 }
 
-func expectedEntries(encryptedPaths []string) ([]storeEntry, error) {
+func expectedEntries() ([]storeEntry, error) {
 	unrestricted, _, err := fixtures()
 	if err != nil {
 		return nil, err
@@ -243,11 +239,15 @@ func expectedEntries(encryptedPaths []string) ([]storeEntry, error) {
 	entries := make([]storeEntry, 0, len(prefixes))
 	for _, prefix := range prefixes {
 		path := paths.NewUnencrypted(prefix.Prefix)
+		encrypted, err := encryption.EncryptPathWithStoreCipher(prefix.Bucket, path, unrestricted.EncAccess.Store)
+		if err != nil {
+			return nil, err
+		}
 		key, err := encryption.DerivePathKey(prefix.Bucket, path, unrestricted.EncAccess.Store)
 		if err != nil {
 			return nil, err
 		}
-		entries = append(entries, storeEntry{prefix.Bucket, prefix.Prefix, encryptedPaths[len(entries)], *key, storj.EncAESGCM})
+		entries = append(entries, storeEntry{prefix.Bucket, prefix.Prefix, encrypted.Raw(), *key, storj.EncAESGCM})
 	}
 	sortEntries(entries)
 	return entries, nil
