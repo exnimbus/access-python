@@ -16,14 +16,14 @@ Example: restrict access to read-only on the "widgets" bucket
     $ uplink restrict \\
         --access $(cat access-key.txt) \\
         --readonly=true \\
-        --prefix=widgets
+        --prefix=sj://widgets
 
 \b
 Example: restrict access to the "springs" prefix in the "widgets" bucket
 \b
     $ uplink restrict \\
         --access $(cat access-key.txt) \\
-        --prefix=widgets/springs
+        --prefix=sj://widgets/springs
 
 """
 
@@ -88,8 +88,8 @@ def register(
     auth_service: str,
     ca_cert: str | None,
     public: bool,
-    format: str,
-    aws_profile: str,
+    format: str | None,
+    aws_profile: str | None,
     access: str,
 ) -> None:
     access_in = uplink.parse_access(access)
@@ -118,7 +118,7 @@ def _register_access(
 
 
 def _display_gateway_credentials(
-    credentials: edge.Credentials, format: str, aws_profile: str
+    credentials: edge.Credentials, format: str | None, aws_profile: str | None
 ) -> None:
     if format == "env":
         print(f"AWS_ACCESS_KEY_ID={credentials.access_key_id}")
@@ -126,7 +126,7 @@ def _display_gateway_credentials(
         print(f"AWS_ENDPOINT={credentials.endpoint}")
     elif format == "aws":
         profile = ""
-        if aws_profile != "":
+        if aws_profile:
             profile = " --profile " + aws_profile
             print(f"aws configure{profile}")
         print(f"aws configure{profile} aws_access_key_id {credentials.access_key_id}")
