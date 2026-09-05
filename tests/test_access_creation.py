@@ -215,9 +215,16 @@ def test_drpc_request_wire_and_errors() -> None:
     )
     with pytest.raises(drpc.RemoteError, match="denied"):
         drpc._read_response(_Connection(drpc._frame(3, 1, 1, b"denied")))
-    with pytest.raises(ConnectionError, match="4 MiB"):
+    with pytest.raises(ConnectionError, match="frame exceeds 4 MiB"):
         drpc._read_response(
             _Connection(drpc._frame(2, 1, 1, b"x" * (4 * 1024 * 1024 + 1)))
+        )
+    with pytest.raises(ConnectionError, match="response exceeds 4 MiB"):
+        drpc._read_response(
+            _Connection(
+                drpc._frame(2, 1, 1, b"x" * (3 * 1024 * 1024), False)
+                + drpc._frame(2, 1, 1, b"x" * (3 * 1024 * 1024))
+            )
         )
 
 

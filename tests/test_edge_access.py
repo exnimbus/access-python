@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+import email.message
 import json
 import ssl
+import urllib.error
 import urllib.request
 from datetime import UTC, datetime
 from typing import Any, cast
@@ -35,6 +37,20 @@ class _Connection:
 
     def close(self) -> None:
         self.closed = True
+
+
+class _HTTPResponse:
+    def __init__(self, data: bytes) -> None:
+        self.data = data
+
+    def __enter__(self) -> _HTTPResponse:
+        return self
+
+    def __exit__(self, *_args: object) -> None:
+        pass
+
+    def read(self) -> bytes:
+        return self.data
 
 
 def _access() -> Access:
@@ -115,15 +131,12 @@ def test_legacy_http_registration_and_timeout(monkeypatch: pytest.MonkeyPatch) -
     expiration = "2026-01-02T03:04:05Z"
     seen: dict[str, object] = {}
 
-    class Response:
-        def __enter__(self) -> Response:
-            return self
-
-        def __exit__(self, *_args: object) -> None:
-            pass
-
-        def read(self) -> bytes:
-            return json.dumps(
+    def urlopen(
+        request: urllib.request.Request, *, context: object, timeout: float
+    ) -> Any:
+        seen.update(url=request.full_url, data=request.data, timeout=timeout)
+        return _HTTPResponse(
+            json.dumps(
                 {
                     "access_key_id": "access-key",
                     "secret_key": "secret-key",
@@ -131,12 +144,7 @@ def test_legacy_http_registration_and_timeout(monkeypatch: pytest.MonkeyPatch) -
                     "freeTierRestrictedExpiration": expiration,
                 }
             ).encode()
-
-    def urlopen(
-        request: urllib.request.Request, *, context: object, timeout: float
-    ) -> Any:
-        seen.update(url=request.full_url, data=request.data, timeout=timeout)
-        return Response()
+        )
 
     monkeypatch.setattr(edge_access.urllib.request, "urlopen", urlopen)
     credentials = edge.Config("http://auth.test/", timeout=4).register_access(
@@ -151,6 +159,120 @@ def test_legacy_http_registration_and_timeout(monkeypatch: pytest.MonkeyPatch) -
     assert credentials.free_tier_restricted_expiration == datetime(
         2026, 1, 2, 3, 4, 5, tzinfo=UTC
     )
+
+
+@pytest.mark.parametrize(
+    "error, expected",
+    [
+        (
+            urllib.error.HTTPError(
+                "http://auth.test", 403, "denied", email.message.Message(), None
+            ),
+            edge.AuthServiceError,
+        ),
+        (urllib.error.URLError(TimeoutError("slow")), TimeoutError),
+        (urllib.error.URLError(OSError("offline")), ConnectionError),
+        (TimeoutError("slow"), TimeoutError),
+    ],
+)
+def test_http_registration_maps_errors(
+    monkeypatch: pytest.MonkeyPatch,
+    error: Exception,
+    expected: type[BaseException],
+) -> None:
+    def fail(*_args: object, **_kwargs: object) -> Any:
+        raise error
+
+    monkeypatch.setattr(edge_access.urllib.request, "urlopen", fail)
+    with pytest.raises(expected):
+        edge.Config("http://auth.test").register_access(_access())
+
+
+def test_http_registration_preserves_ssl_error(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    reason = ssl.SSLError("certificate failed")
+
+    def fail(*_args: object, **_kwargs: object) -> Any:
+        raise urllib.error.URLError(reason)
+
+    monkeypatch.setattr(edge_access.urllib.request, "urlopen", fail)
+    with pytest.raises(ssl.SSLError) as caught:
+        edge.Config("http://auth.test").register_access(_access())
+    assert caught.value is reason
+
+
+@pytest.mark.parametrize("body", [b"not json", b"{}"])
+def test_http_registration_rejects_malformed_or_missing_body(
+    monkeypatch: pytest.MonkeyPatch, body: bytes
+) -> None:
+    def urlopen(*_args: object, **_kwargs: object) -> Any:
+        return _HTTPResponse(body)
+
+    monkeypatch.setattr(edge_access.urllib.request, "urlopen", urlopen)
+    with pytest.raises(ValueError, match="malformed"):
+        edge.Config("http://auth.test").register_access(_access())
+
+
+@pytest.mark.parametrize(
+    "address, expected",
+    [
+        ("insecure://auth.test:7777", ("auth.test", 7777, True)),
+        ("[::1]:7777", ("::1", 7777, False)),
+    ],
+)
+def test_drpc_target_accepts_supported_addresses(
+    address: str, expected: tuple[str, int, bool]
+) -> None:
+    assert edge_access._drpc_target(address) == expected
+
+
+@pytest.mark.parametrize(
+    "address",
+    [
+        "ftp://auth.test:7777",
+        "auth.test:not-a-port",
+        "auth.test:65536",
+        "user@auth.test:7777",
+        "auth.test:7777/path",
+        "auth.test:7777?query",
+        "auth.test:7777#fragment",
+        "auth.test",
+        ":7777",
+    ],
+)
+def test_drpc_target_rejects_invalid_addresses(address: str) -> None:
+    with pytest.raises(ValueError):
+        edge_access._drpc_target(address)
+
+
+@pytest.mark.parametrize("pem", [b"not a certificate", b"\xff"])
+def test_ssl_context_rejects_invalid_pem(pem: bytes) -> None:
+    with pytest.raises(ssl.SSLError):
+        edge.Config("auth.test:443", certificate_pem=pem)._ssl_context()
+
+
+@pytest.mark.parametrize(
+    "fields",
+    [
+        (None, "secret", "https://gateway.test"),
+        ("", "secret", "https://gateway.test"),
+        (1, "secret", "https://gateway.test"),
+    ],
+)
+def test_credentials_reject_missing_empty_or_non_string_fields(
+    fields: tuple[object, object, object]
+) -> None:
+    with pytest.raises(ValueError, match="missing"):
+        edge_access._credentials(*fields, None)
+
+
+def test_expiration_rejects_non_string_and_naive_values() -> None:
+    assert edge_access._parse_expiration(None) is None
+    with pytest.raises(ValueError):
+        edge_access._parse_expiration(1)
+    with pytest.raises(ValueError, match="timezone"):
+        edge_access._parse_expiration("2026-01-02T03:04:05")
 
 
 def test_registration_errors_are_distinct(monkeypatch: pytest.MonkeyPatch) -> None:
