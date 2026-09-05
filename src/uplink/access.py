@@ -5,8 +5,10 @@ from collections.abc import Sequence
 import hashlib
 import hmac
 from uplink.common import grant
+from uplink.common import encryption
 from uplink.common import macaroon
 from uplink.common import metainfo
+from uplink.common import paths
 from uplink.common.storj import NodeURL
 from uplink.common.storj import CipherSuite, Key
 from uplink.common import rpc
@@ -45,11 +47,17 @@ def request_access_with_passphrase(
 
 
 class Config:
-    def __init__(self, user_agent: str = "", dial_timeout: float = 20.0) -> None:
+    def __init__(
+        self,
+        user_agent: str = "",
+        dial_timeout: float = 20.0,
+        disable_object_key_encryption: bool = False,
+    ) -> None:
         if dial_timeout <= 0:
             raise ValueError("dial timeout must be positive")
         self.user_agent = user_agent
         self.dial_timeout = dial_timeout
+        self.disable_object_key_encryption = disable_object_key_encryption
 
     def request_access_with_passphrase(
         self, satellite_address: str, api_key: str, passphrase: str
@@ -71,7 +79,11 @@ class Config:
         except Exception as exc:
             raise ValueError("could not derive access root key") from exc
         enc_access = grant.EncryptionAccess(key)
-        enc_access.default_path_cipher = CipherSuite.ENC_AESGCM
+        enc_access.default_path_cipher = (
+            CipherSuite.ENC_NULL
+            if self.disable_object_key_encryption
+            else CipherSuite.ENC_AESGCM
+        )
         enc_access.limit_to(parsed_api_key)
         return Access(satellite_url, parsed_api_key, enc_access)
 
@@ -130,6 +142,19 @@ class Access:
 
     def serialize(self) -> str:
         return self._to_internal().serialize()
+
+    def override_encryption_key(
+        self, bucket: bytes, prefix: bytes, encryption_key: Key
+    ) -> None:
+        if not prefix.endswith(b"/"):
+            raise ValueError("prefix must end with slash")
+
+        unencrypted = paths.Unencrypted(prefix.removesuffix(b"/"))
+        store = self.enc_access.store
+        encrypted = encryption.encrypt_path_with_store_cipher(
+            bucket, unencrypted, store
+        )
+        store.add(bucket, unencrypted, encrypted, encryption_key)
 
     def _to_internal(self) -> grant.Access:
         return grant.Access(
