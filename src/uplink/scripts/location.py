@@ -22,7 +22,7 @@ class Location:
             trimmed = location[5:]
             idx = trimmed.find("/")
             if len(trimmed) == 0 or idx == 0:
-                raise Exception(f"invalid path: empty bucket in path '{location}'")
+                raise ValueError(f"invalid path: empty bucket in path '{location}'")
             if idx == -1:
                 bucket, key = trimmed, ""
             else:
