@@ -107,8 +107,6 @@ def _register_access(
     if ca_cert is not None:
         certificate_pem = open(ca_cert, mode="rb").read()
 
-    # We don't implement dRPC yet, so use the legacy http service only.
-
     config = edge.Config(
         auth_service_url=auth_service,
         certificate_pem=certificate_pem,

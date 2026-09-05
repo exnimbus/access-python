@@ -10,16 +10,11 @@ import socket
 from datetime import UTC, datetime, timedelta
 from typing import Any, cast
 
+from uplink.common import drpc
 from uplink.common.pb import project_info_pb2
 from uplink.common.storj import NodeURL, node_id_from_bytes
 
 _HEADER = b"DRPC!!!1"
-_MAX_RESPONSE = 4 * 1024 * 1024
-_INVOKE = 1
-_MESSAGE = 2
-_ERROR = 3
-_CLOSE = 5
-_CLOSE_SEND = 6
 
 
 def project_salt(
@@ -37,8 +32,11 @@ def project_salt(
             conn.set_connect_state()
             conn.do_handshake()
             _verify_peer(conn, node)
-            _send_request(conn, cast(bytes, request.SerializeToString()))
-            response = _read_response(conn)
+            response = drpc.invoke(
+                conn,
+                "/metainfo.Metainfo/ProjectInfo",
+                cast(bytes, request.SerializeToString()),
+            )
         finally:
             conn.close()
     except (ConnectionError, ValueError):
@@ -175,91 +173,3 @@ def _verify_signature(
         public_key.verify(signature, data, ec.ECDSA(algorithm))
     else:
         public_key.verify(signature, data)
-
-
-def _send_request(conn: Any, request: bytes) -> None:
-    # ponytail: one call has no retry or pool; add them when a second satellite operation exists.
-    conn.sendall(
-        _frame(_INVOKE, 1, 0, b"/metainfo.Metainfo/ProjectInfo")
-        + _frame(_MESSAGE, 1, 1, request)
-        + _frame(_CLOSE_SEND, 1, 2, b"")
-    )
-
-
-def _read_response(conn: Any) -> bytes:
-    chunks: list[bytes] = []
-    size = 0
-    message_started = False
-    while True:
-        kind, stream, message, done, data = _read_frame(conn)
-        if stream != 1:
-            raise ConnectionError("unexpected DRPC stream")
-        if kind == _ERROR:
-            raise ConnectionError(data.decode("utf-8", "replace"))
-        if kind == _MESSAGE:
-            if message != 1 or (not message_started and message != 1):
-                raise ConnectionError("unexpected DRPC message")
-            message_started = True
-            size += len(data)
-            if size > _MAX_RESPONSE:
-                raise ConnectionError("project info response exceeds 4 MiB")
-            chunks.append(data)
-            if done:
-                return b"".join(chunks)
-            continue
-        if kind in (_CLOSE, _CLOSE_SEND):
-            raise ConnectionError("DRPC stream closed before project info response")
-        raise ConnectionError("unexpected DRPC frame")
-
-
-def _read_frame(conn: Any) -> tuple[int, int, int, bool, bytes]:
-    control = _read_exact(conn, 1)[0]
-    kind = (control & 0x7E) >> 1
-    stream = _read_varint(conn)
-    message = _read_varint(conn)
-    length = _read_varint(conn)
-    if length > _MAX_RESPONSE:
-        raise ConnectionError("DRPC frame exceeds 4 MiB")
-    return kind, stream, message, bool(control & 1), _read_exact(conn, length)
-
-
-def _read_varint(conn: Any) -> int:
-    value = 0
-    for shift in range(0, 64, 7):
-        byte = _read_exact(conn, 1)[0]
-        value |= (byte & 0x7F) << shift
-        if byte < 128:
-            return value
-    raise ConnectionError("invalid DRPC varint")
-
-
-def _read_exact(conn: Any, length: int) -> bytes:
-    data = bytearray()
-    while len(data) < length:
-        chunk: bytes = conn.recv(length - len(data))
-        if not chunk:
-            raise ConnectionError("unexpected EOF")
-        data.extend(chunk)
-    return bytes(data)
-
-
-def _frame(
-    kind: int, stream: int, message: int, data: bytes, done: bool = True
-) -> bytes:
-    control = kind << 1 | int(done)
-    return (
-        bytes([control])
-        + _varint(stream)
-        + _varint(message)
-        + _varint(len(data))
-        + data
-    )
-
-
-def _varint(value: int) -> bytes:
-    data = bytearray()
-    while value >= 128:
-        data.append(value & 0x7F | 0x80)
-        value >>= 7
-    data.append(value)
-    return bytes(data)
