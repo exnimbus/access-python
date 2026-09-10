@@ -2,6 +2,7 @@
 # See LICENSE for copying information.
 
 from collections.abc import Sequence
+import copy
 import hashlib
 import hmac
 from uplink.common import grant
@@ -12,6 +13,44 @@ from uplink.common import paths
 from uplink.common.storj import NodeURL
 from uplink.common.storj import CipherSuite, Key
 from uplink.common import rpc
+
+Permission = grant.Permission
+SharePrefix = grant.SharePrefix
+
+
+class EncryptionKey:
+    __slots__ = ["_key"]
+
+    def __init__(self, key: Key) -> None:
+        self._key = key
+
+
+def derive_encryption_key(passphrase: str, salt: bytes) -> EncryptionKey:
+    return EncryptionKey(_derive_key(passphrase, salt, parallelism=1))
+
+
+def read_only_permission() -> Permission:
+    return Permission(allow_download=True, allow_list=True)
+
+
+def write_only_permission() -> Permission:
+    return Permission(allow_upload=True, allow_delete=True)
+
+
+def full_permission() -> Permission:
+    return Permission(
+        allow_download=True,
+        allow_upload=True,
+        allow_list=True,
+        allow_delete=True,
+        allow_put_object_retention=True,
+        allow_get_object_retention=True,
+        allow_put_object_legal_hold=True,
+        allow_get_object_legal_hold=True,
+        allow_bypass_governance_retention=True,
+        allow_put_bucket_object_lock_configuration=True,
+        allow_get_bucket_object_lock_configuration=True,
+    )
 
 
 def parse_access(access_value: str) -> "Access":
@@ -44,6 +83,10 @@ def request_access_with_passphrase(
     return Config().request_access_with_passphrase(
         satellite_address, api_key, passphrase
     )
+
+
+def revoke_access(authorizing_access: "Access", access_to_revoke: "Access") -> None:
+    Config().revoke_access(authorizing_access, access_to_revoke)
 
 
 class Config:
@@ -87,12 +130,27 @@ class Config:
         enc_access.limit_to(parsed_api_key)
         return Access(satellite_url, parsed_api_key, enc_access)
 
+    def revoke_access(
+        self, authorizing_access: "Access", access_to_revoke: "Access"
+    ) -> None:
+        metainfo.revoke_api_key(
+            authorizing_access.satellite_url,
+            authorizing_access.api_key.serialize_raw(),
+            access_to_revoke.api_key.serialize_raw(),
+            self.user_agent,
+            self.dial_timeout,
+        )
+
 
 def _derive_root_key(passphrase: str, project_salt: bytes) -> Key:
+    return _derive_key(passphrase, project_salt, parallelism=8)
+
+
+def _derive_key(passphrase: str, salt: bytes, parallelism: int) -> Key:
     from argon2.low_level import Type, hash_secret_raw
 
     password = passphrase.encode()
-    mixed_salt = hmac.new(password, project_salt, hashlib.sha256).digest()
+    mixed_salt = hmac.new(password, salt, hashlib.sha256).digest()
     path_salt = hmac.new(mixed_salt, b"", hashlib.sha256).digest()
     return Key(
         hash_secret_raw(
@@ -100,7 +158,7 @@ def _derive_root_key(passphrase: str, project_salt: bytes) -> Key:
             path_salt,
             time_cost=1,
             memory_cost=65536,
-            parallelism=8,
+            parallelism=parallelism,
             hash_len=32,
             type=Type.ID,
             version=19,
@@ -126,6 +184,10 @@ class Access:
         return self._satellite_url
 
     @property
+    def satellite_address(self) -> str:
+        return str(self._satellite_url)
+
+    @property
     def api_key(self) -> macaroon.APIKey:
         return self._api_key
 
@@ -135,16 +197,23 @@ class Access:
 
     def share(
         self,
-        permission: grant.Permission,
-        prefixes: Sequence[grant.SharePrefix] = [],
+        permission: Permission,
+        prefixes: Sequence[SharePrefix] = [],
     ) -> "Access":
+        if permission.allow_lock:
+            permission = copy.copy(permission)
+            permission.allow_lock = False
+            permission.allow_put_object_retention = True
+            permission.allow_get_object_retention = True
+            permission.allow_put_bucket_object_lock_configuration = True
+            permission.allow_get_bucket_object_lock_configuration = True
         return Access._from_internal(self._to_internal().restrict(permission, prefixes))
 
     def serialize(self) -> str:
         return self._to_internal().serialize()
 
     def override_encryption_key(
-        self, bucket: bytes, prefix: bytes, encryption_key: Key
+        self, bucket: bytes, prefix: bytes, encryption_key: EncryptionKey | Key
     ) -> None:
         if not prefix.endswith(b"/"):
             raise ValueError("prefix must end with slash")
@@ -154,7 +223,14 @@ class Access:
         encrypted = encryption.encrypt_path_with_store_cipher(
             bucket, unencrypted, store
         )
-        store.add(bucket, unencrypted, encrypted, encryption_key)
+        store.add(
+            bucket,
+            unencrypted,
+            encrypted,
+            encryption_key._key
+            if isinstance(encryption_key, EncryptionKey)
+            else encryption_key,
+        )
 
     def _to_internal(self) -> grant.Access:
         return grant.Access(

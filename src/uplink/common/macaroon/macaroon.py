@@ -202,7 +202,7 @@ def serialize_packet(buf: bytearray, field_type: FieldType, data: bytes) -> None
 
 def append_varint(buf: bytearray, x: int) -> None:
     while x >= 0x80:
-        buf.append(x | 0x80)
+        buf.append((x & 0x7F) | 0x80)
         x >>= 7
     buf.append(x)
 

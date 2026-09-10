@@ -13,8 +13,12 @@ _CLOSE = 5
 _CLOSE_SEND = 6
 
 
-class RemoteError(ConnectionError):
+class RemoteError(RuntimeError):
     """An error returned by the remote dRPC service."""
+
+    def __init__(self, message: str, code: int = 0) -> None:
+        super().__init__(message)
+        self.code = code
 
 
 def invoke(conn: Any, rpc: str, request: bytes) -> bytes:
@@ -34,7 +38,15 @@ def _read_response(conn: Any) -> bytes:
         if stream != 1:
             raise ConnectionError("unexpected dRPC stream")
         if kind == _ERROR:
-            raise RemoteError(data.decode("utf-8", "replace"))
+            if len(data) < 8:
+                raise RemoteError(
+                    data.decode("utf-8", "replace")
+                    + " (dRPC error payload missing status code)"
+                )
+            raise RemoteError(
+                data[8:].decode("utf-8", "replace"),
+                int.from_bytes(data[:8], "big"),
+            )
         if kind == _MESSAGE:
             if message != 1:
                 raise ConnectionError("unexpected dRPC message")

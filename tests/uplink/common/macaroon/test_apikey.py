@@ -1,7 +1,7 @@
 # Copyright (C) 2026 Storj Labs, Inc.
 # See LICENSE for copying information.
 
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta
 from collections.abc import Sequence
 
 import pytest
@@ -135,3 +135,15 @@ def test_inspection_and_serialization() -> None:
     assert key.restrict(long).restrict(short).get_max_object_ttl() == timedelta(
         seconds=1
     )
+
+
+def test_large_caveat_round_trip() -> None:
+    key = new_api_key(SECRET).restrict(Caveat(nonce=b"x" * 300))
+    assert APIKey.parse_raw(key.serialize_raw()).tail == key.tail
+
+
+def test_timezone_aware_action() -> None:
+    expires = datetime.now(UTC) + timedelta(minutes=1)
+    caveat = Caveat()
+    caveat.not_after.FromDatetime(expires)
+    new_api_key(SECRET).restrict(caveat).check(SECRET, action(time=datetime.now(UTC)))
