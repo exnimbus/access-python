@@ -4,7 +4,7 @@ Uplink Access is python library for Storj access management.
 
 ## Roadmap
 
-- [ ] Creating access
+- [X] Creating access
 - [X] Restricting access
 - [X] Registering access with edge services
 

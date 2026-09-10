@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import hashlib
+import errno
 from typing import Any
 
 import pytest
@@ -39,6 +40,13 @@ def test_derive_root_key_matches_go_vector() -> None:
     )
 
 
+def test_derive_encryption_key_matches_go_vector() -> None:
+    key = uplink.derive_encryption_key("correct horse battery staple", bytes(range(16)))
+    assert bytes(key._key) == bytes.fromhex(
+        "10e3648f7704fee34dea43e60aadfaac1e52d46e1e9fe09b6137ebdef4c25b49"
+    )
+
+
 def test_request_access_config_and_module(monkeypatch: pytest.MonkeyPatch) -> None:
     calls: list[tuple[bytes, str, float]] = []
 
@@ -67,6 +75,34 @@ def test_request_access_config_and_module(monkeypatch: pytest.MonkeyPatch) -> No
     ).serialize()
 
 
+def test_revoke_access_config_and_module(monkeypatch: pytest.MonkeyPatch) -> None:
+    authorizer, _ = _access()
+    revoked, _ = _access()
+    calls: list[tuple[NodeURL, bytes, bytes, str, float]] = []
+
+    def revoke(
+        node: NodeURL,
+        authorizing_key: bytes,
+        revoked_key: bytes,
+        agent: str,
+        timeout: float,
+    ) -> None:
+        calls.append((node, authorizing_key, revoked_key, agent, timeout))
+
+    monkeypatch.setattr(metainfo, "revoke_api_key", revoke)
+    uplink.Config("agent", 3.0).revoke_access(authorizer, revoked)
+    uplink.revoke_access(authorizer, revoked)
+
+    assert calls[0] == (
+        authorizer.satellite_url,
+        authorizer.api_key.serialize_raw(),
+        revoked.api_key.serialize_raw(),
+        "agent",
+        3.0,
+    )
+    assert calls[1][-2:] == ("", 20.0)
+
+
 def test_override_encryption_key() -> None:
     access, enc_access = _access()
     override = Key(b"override".ljust(Key.SIZE, b"\0"))
@@ -81,6 +117,30 @@ def test_override_encryption_key() -> None:
     assert base.unencrypted == Unencrypted(b"tenant/")
     assert base.encrypted == expected
     assert base.key == override
+
+    derived = uplink.derive_encryption_key("tenant", b"salt")
+    access.override_encryption_key(b"bucket", b"other/", derived)
+    _, _, base = enc_access.store.lookup_unencrypted(b"bucket", Unencrypted(b"other"))
+    assert base is not None and base.key == derived._key
+
+
+def test_permission_helpers_and_deprecated_lock_mapping() -> None:
+    assert uplink.read_only_permission().allow_download
+    assert uplink.read_only_permission().allow_list
+    assert uplink.write_only_permission().allow_upload
+    assert uplink.write_only_permission().allow_delete
+    full = uplink.full_permission()
+    assert full.allow_bypass_governance_retention
+
+    access, _ = _access()
+    assert access.satellite_address == _satellite()
+    shared = access.share(uplink.Permission(allow_lock=True))
+    caveat = shared.api_key._caveats()[-1]
+    assert caveat.disallow_locks
+    assert not caveat.disallow_put_retention
+    assert not caveat.disallow_get_retention
+    assert not caveat.disallow_put_bucket_object_lock_configuration
+    assert not caveat.disallow_get_bucket_object_lock_configuration
 
 
 @pytest.mark.parametrize("prefix", [b"", b"tenant"])
@@ -213,8 +273,11 @@ def test_drpc_request_wire_and_errors() -> None:
         b"\x05\x01\x01\x0e\x7a\x0c\x0a\x03key\x12\x05agent"
         b"\x0d\x01\x02\x00"
     )
-    with pytest.raises(drpc.RemoteError, match="denied"):
-        drpc._read_response(_Connection(drpc._frame(3, 1, 1, b"denied")))
+    with pytest.raises(drpc.RemoteError, match="denied") as raised:
+        drpc._read_response(
+            _Connection(drpc._frame(3, 1, 1, (7).to_bytes(8, "big") + b"denied"))
+        )
+    assert raised.value.code == 7
     with pytest.raises(ConnectionError, match="frame exceeds 4 MiB"):
         drpc._read_response(
             _Connection(drpc._frame(2, 1, 1, b"x" * (4 * 1024 * 1024 + 1)))
@@ -226,6 +289,84 @@ def test_drpc_request_wire_and_errors() -> None:
                 + drpc._frame(2, 1, 1, b"x" * (3 * 1024 * 1024))
             )
         )
+
+
+def test_revoke_api_key_wire(monkeypatch: pytest.MonkeyPatch) -> None:
+    captured: list[tuple[str, bytes]] = []
+
+    def request(_node: NodeURL, _timeout: float, rpc: str, payload: bytes) -> bytes:
+        captured.append((rpc, payload))
+        return metainfo.project_info_pb2.RevokeAPIKeyResponse().SerializeToString()
+
+    monkeypatch.setattr(metainfo, "_request", request)
+    metainfo.revoke_api_key(
+        NodeURL.parse(_satellite()), b"authorizer", b"revoked", "agent", 3.0
+    )
+
+    rpc, payload = captured[0]
+    parsed = metainfo.project_info_pb2.RevokeAPIKeyRequest.FromString(payload)
+    assert rpc == "/metainfo.Metainfo/RevokeAPIKey"
+    assert parsed.header.api_key == b"authorizer"
+    assert parsed.header.user_agent == b"agent"
+    assert parsed.api_key == b"revoked"
+
+    def malformed(*_args: object) -> bytes:
+        return b"\xff"
+
+    monkeypatch.setattr(metainfo, "_request", malformed)
+    with pytest.raises(ValueError, match="malformed revoke"):
+        metainfo.revoke_api_key(
+            NodeURL.parse(_satellite()), b"authorizer", b"revoked", "agent", 3.0
+        )
+
+
+def test_metainfo_retries_network_errors(monkeypatch: pytest.MonkeyPatch) -> None:
+    attempts = 0
+    delays: list[float] = []
+
+    def flaky(_node: NodeURL, _timeout: float, _rpc: str, _payload: bytes) -> bytes:
+        nonlocal attempts
+        attempts += 1
+        if attempts < 3:
+            raise ConnectionResetError(errno.ECONNRESET, "reset")
+        return b"response"
+
+    monkeypatch.setattr(metainfo, "_request_once", flaky)
+    monkeypatch.setattr(metainfo.time, "sleep", delays.append)
+
+    assert metainfo._request(NodeURL(), 1, "rpc", b"request") == b"response"
+    assert attempts == 3
+    assert delays == [0.1, 0.2]
+
+
+@pytest.mark.parametrize(
+    "code,error",
+    [
+        (3, ValueError),
+        (4, TimeoutError),
+        (7, PermissionError),
+        (16, PermissionError),
+        (13, uplink.SatelliteError),
+    ],
+)
+def test_metainfo_maps_remote_status(
+    monkeypatch: pytest.MonkeyPatch, code: int, error: type[Exception]
+) -> None:
+    def rejected(*_args: object) -> bytes:
+        raise drpc.RemoteError("rejected", code)
+
+    monkeypatch.setattr(metainfo, "_request_once", rejected)
+    with pytest.raises(error, match="rejected"):
+        metainfo._request(NodeURL(), 1, "rpc", b"request")
+
+
+def test_metainfo_preserves_timeout(monkeypatch: pytest.MonkeyPatch) -> None:
+    def timeout(*_args: object, **_kwargs: object) -> _Raw:
+        raise TimeoutError("timed out")
+
+    monkeypatch.setattr(metainfo.socket, "create_connection", timeout)
+    with pytest.raises(TimeoutError, match="timed out"):
+        metainfo._request_once(NodeURL.parse(_satellite()), 1, "rpc", b"request")
 
 
 class _Raw:
@@ -265,6 +406,19 @@ def test_project_salt_rejects_missing_or_malformed_response(
         metainfo.project_salt(node, b"key", "agent", 1)
 
 
+def test_project_salt_success(monkeypatch: pytest.MonkeyPatch) -> None:
+    response = metainfo.project_info_pb2.ProjectInfoResponse(project_salt=b"salt")
+
+    def request(_node: NodeURL, _timeout: float, _rpc: str, _data: bytes) -> bytes:
+        return response.SerializeToString()
+
+    monkeypatch.setattr(metainfo, "_request", request)
+    assert (
+        metainfo.project_salt(NodeURL.parse(_satellite()), b"key", "agent", 1)
+        == b"salt"
+    )
+
+
 def test_project_salt_maps_socket_error(monkeypatch: pytest.MonkeyPatch) -> None:
     def fail(*_args: object, **_kwargs: object) -> _Raw:
         raise OSError("offline")
@@ -272,6 +426,26 @@ def test_project_salt_maps_socket_error(monkeypatch: pytest.MonkeyPatch) -> None
     monkeypatch.setattr(metainfo.socket, "create_connection", fail)
     with pytest.raises(ConnectionError, match="could not fetch"):
         metainfo.project_salt(NodeURL.parse(_satellite()), b"key", "agent", 1)
+
+
+def test_satellite_address_supports_ipv6() -> None:
+    assert metainfo._split_address("[2001:db8::1]:7777") == ("2001:db8::1", 7777)
+
+
+@pytest.mark.parametrize(
+    "address",
+    ["host:bad", "", "user@host:7777", "host:", "host/path", "host?x", "host#x"],
+)
+def test_satellite_address_rejects_invalid_values(address: str) -> None:
+    with pytest.raises(ValueError, match="invalid satellite address"):
+        metainfo._split_address(address)
+
+
+def test_tls_connection_builds_client_identity() -> None:
+    raw = metainfo.socket.socket()
+    with pytest.warns(DeprecationWarning):
+        conn = metainfo._tls_connection(raw)
+    conn.close()
 
 
 def test_peer_identity_verification() -> None:
@@ -309,3 +483,21 @@ def test_peer_identity_verification() -> None:
     broken = Peer([crypto.load_certificate(crypto.FILETYPE_PEM, leaf), good.chain[0]])
     with pytest.raises(Exception):
         metainfo._verify_peer(broken, node)
+
+    with pytest.raises(ConnectionError, match="identity chain"):
+        metainfo._verify_peer(Peer([]), node)
+
+
+def test_signature_verification_dispatches_by_key_type() -> None:
+    class RSAKey:
+        def verify(self, *_args: object) -> None:
+            self.calls = len(_args)
+
+    class OtherKey(RSAKey):
+        pass
+
+    rsa = RSAKey()
+    other = OtherKey()
+    metainfo._verify_signature(rsa, b"signature", b"data", object())
+    metainfo._verify_signature(other, b"signature", b"data", object())
+    assert (rsa.calls, other.calls) == (4, 2)

@@ -63,3 +63,33 @@ class ProjectInfoResponse(google.protobuf.message.Message):
     def ClearField(self, field_name: typing_extensions.Literal["project_salt", b"project_salt"]) -> None: ...
 
 global___ProjectInfoResponse = ProjectInfoResponse
+
+@typing_extensions.final
+class RevokeAPIKeyRequest(google.protobuf.message.Message):
+    DESCRIPTOR: google.protobuf.descriptor.Descriptor
+
+    HEADER_FIELD_NUMBER: builtins.int
+    API_KEY_FIELD_NUMBER: builtins.int
+    @property
+    def header(self) -> global___RequestHeader: ...
+    api_key: builtins.bytes
+    def __init__(
+        self,
+        *,
+        header: global___RequestHeader | None = ...,
+        api_key: builtins.bytes = ...,
+    ) -> None: ...
+    def HasField(self, field_name: typing_extensions.Literal["header", b"header"]) -> builtins.bool: ...
+    def ClearField(self, field_name: typing_extensions.Literal["api_key", b"api_key", "header", b"header"]) -> None: ...
+
+global___RevokeAPIKeyRequest = RevokeAPIKeyRequest
+
+@typing_extensions.final
+class RevokeAPIKeyResponse(google.protobuf.message.Message):
+    DESCRIPTOR: google.protobuf.descriptor.Descriptor
+
+    def __init__(
+        self,
+    ) -> None: ...
+
+global___RevokeAPIKeyResponse = RevokeAPIKeyResponse

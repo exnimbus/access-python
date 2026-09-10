@@ -4,7 +4,7 @@
 from __future__ import annotations
 
 from collections.abc import Sequence
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta
 from enum import Enum, IntFlag
 from typing import NamedTuple, Protocol
 
@@ -232,13 +232,23 @@ def new_api_key(secret: bytes) -> APIKey:
 
 
 def caveat_allows(c: Caveat, action: Action) -> bool:
+    action_time = (
+        action.time.astimezone(UTC) if action.time.tzinfo is not None else action.time
+    )
+    timezone = UTC if action.time.tzinfo is not None else None
+
     # if the action is after the caveat's "not after" field, then it is invalid
-    if is_valid_timestamp(c.not_after) and action.time > c.not_after.ToDatetime():
+    if is_valid_timestamp(c.not_after) and action_time > c.not_after.ToDatetime(
+        tzinfo=timezone
+    ):
         return False
 
     # if the caveat's "not before" field is *after* the action, then the action
     # is before the "not before" field and it is invalid
-    if is_valid_timestamp(c.not_before) and c.not_before.ToDatetime() > action.time:
+    if (
+        is_valid_timestamp(c.not_before)
+        and c.not_before.ToDatetime(tzinfo=timezone) > action_time
+    ):
         return False
 
     # we want to always allow reads for bucket metadata, perhaps filtered by the

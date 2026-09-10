@@ -14,3 +14,10 @@ message ProjectInfoRequest {
 message ProjectInfoResponse {
     bytes project_salt = 1;
 }
+
+message RevokeAPIKeyRequest {
+    RequestHeader header = 15;
+    bytes api_key = 1;
+}
+
+message RevokeAPIKeyResponse {}

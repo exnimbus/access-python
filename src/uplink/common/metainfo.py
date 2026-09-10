@@ -6,15 +6,28 @@
 from __future__ import annotations
 
 import hashlib
+import errno
 import socket
+import time
 from datetime import UTC, datetime, timedelta
 from typing import Any, cast
+from urllib.parse import urlsplit
 
 from uplink.common import drpc
 from uplink.common.pb import project_info_pb2
 from uplink.common.storj import NodeURL, node_id_from_bytes
+from uplink.errors import SatelliteError
 
 _HEADER = b"DRPC!!!1"
+_RETRY_DELAYS = (0.1, 0.2, 0.4, 0.8, 1.6, 3.0)
+_RETRY_ERRNOS = {
+    errno.ECONNABORTED,
+    errno.ECONNREFUSED,
+    errno.ECONNRESET,
+    errno.EHOSTUNREACH,
+    errno.ENETUNREACH,
+    errno.ETIMEDOUT,
+}
 
 
 def project_salt(
@@ -25,23 +38,13 @@ def project_salt(
     request.header.api_key = api_key
     request.header.user_agent = user_agent.encode()
     try:
-        raw = socket.create_connection(_split_address(node.address), timeout=timeout)
-        raw.sendall(_HEADER)
-        conn = _tls_connection(raw)
-        try:
-            conn.set_connect_state()
-            conn.do_handshake()
-            _verify_peer(conn, node)
-            response = drpc.invoke(
-                conn,
-                "/metainfo.Metainfo/ProjectInfo",
-                cast(bytes, request.SerializeToString()),
-            )
-        finally:
-            conn.close()
-    except (ConnectionError, ValueError):
-        raise
-    except Exception as exc:
+        response = _request(
+            node,
+            timeout,
+            "/metainfo.Metainfo/ProjectInfo",
+            cast(bytes, request.SerializeToString()),
+        )
+    except ConnectionError as exc:
         raise ConnectionError("could not fetch project salt") from exc
 
     result = project_info_pb2.ProjectInfoResponse()
@@ -54,13 +57,96 @@ def project_salt(
     return result.project_salt
 
 
+def revoke_api_key(
+    node: NodeURL,
+    authorizing_api_key: bytes,
+    api_key_to_revoke: bytes,
+    user_agent: str,
+    timeout: float,
+) -> None:
+    request = project_info_pb2.RevokeAPIKeyRequest(api_key=api_key_to_revoke)
+    request.header.api_key = authorizing_api_key
+    request.header.user_agent = user_agent.encode()
+    response = _request(
+        node,
+        timeout,
+        "/metainfo.Metainfo/RevokeAPIKey",
+        cast(bytes, request.SerializeToString()),
+    )
+    try:
+        project_info_pb2.RevokeAPIKeyResponse.FromString(response)
+    except Exception as exc:
+        raise ValueError("malformed revoke API key response") from exc
+
+
+def _request(node: NodeURL, timeout: float, rpc: str, request: bytes) -> bytes:
+    for delay in (*_RETRY_DELAYS, None):
+        try:
+            return _request_once(node, timeout, rpc, request)
+        except drpc.RemoteError as exc:
+            if exc.code == 3:
+                raise ValueError(str(exc)) from exc
+            if exc.code == 4:
+                raise TimeoutError(str(exc)) from exc
+            if exc.code in (7, 16):
+                raise PermissionError(str(exc)) from exc
+            raise SatelliteError(str(exc)) from exc
+        except OSError as exc:
+            if delay is None or not _needs_retry(exc):
+                raise
+            time.sleep(delay)
+    raise AssertionError("unreachable")
+
+
+def _request_once(node: NodeURL, timeout: float, rpc: str, request: bytes) -> bytes:
+    try:
+        raw = socket.create_connection(_split_address(node.address), timeout=timeout)
+        raw.sendall(_HEADER)
+        conn = _tls_connection(raw)
+        try:
+            conn.set_connect_state()
+            conn.do_handshake()
+            _verify_peer(conn, node)
+            return drpc.invoke(conn, rpc, request)
+        finally:
+            conn.close()
+    except (ConnectionError, TimeoutError, ValueError, drpc.RemoteError):
+        raise
+    except Exception as exc:
+        raise ConnectionError("could not communicate with satellite") from exc
+
+
+def _needs_retry(exc: OSError) -> bool:
+    return (
+        isinstance(
+            exc,
+            (
+                ConnectionAbortedError,
+                ConnectionRefusedError,
+                ConnectionResetError,
+                TimeoutError,
+            ),
+        )
+        or exc.errno in _RETRY_ERRNOS
+    )
+
+
 def _split_address(address: str) -> tuple[str, int]:
-    host, separator, port = address.rpartition(":")
-    if not separator:
-        return address, 7777
-    if not host or not port:
+    try:
+        parsed = urlsplit(f"//{address}")
+        port = parsed.port or 7777
+    except ValueError as exc:
+        raise ValueError("invalid satellite address") from exc
+    if (
+        parsed.hostname is None
+        or parsed.username is not None
+        or parsed.netloc.endswith(":")
+        or parsed.path
+        or parsed.query
+        or parsed.fragment
+    ):
         raise ValueError("invalid satellite address")
-    return host, int(port)
+    return parsed.hostname, port
 
 
 def _tls_connection(raw: socket.socket) -> Any:
